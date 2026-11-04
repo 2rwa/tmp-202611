@@ -20,6 +20,7 @@ jobs:
         shell: bash
         run: |
           cat packed/game.html.part0 packed/game.html.part1 packed/game.html.part2 packed/game.html.part3 > index.html
+          printf '\n' >> index.html
           echo 'e47adb8ccc1a5b2c7b4691607eb1f8ab296aaa8dd90eecbdc831fed58cdcd0da  index.html' | sha256sum -c -
           node -e "const fs=require('fs');const s=fs.readFileSync('index.html','utf8');const m=s.match(/<script>([\\s\\S]*?)<\\/script>/); if(!m)process.exit(1);fs.writeFileSync('/tmp/game-check.js',m[1]);"
           node --check /tmp/game-check.js
