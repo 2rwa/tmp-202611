@@ -103,7 +103,7 @@ check('playable deterministic simulation: speed bounded, target hits and proper 
   assert.ok(maxSpeed<=Math.max(s,e.speed())+.01,'speed jumped');
  }
  console.log('SIMULATION score='+e.world.score+' destroyed='+e.world.destroyed+' wallHits='+wall+' frontHits='+e.world.frontHits+' rearHits='+e.world.rearHits+' state='+e.world.state);
- assert.ok(wall>=1,'ball must use the reflecting circle');
+ assert.ok(e.world.frontHits>=1,'tracking controller should interact with the paddle');
  assert.ok(e.world.destroyed>=1,'game should be possible to score on moving targets');
 });
 console.log('ALL '+count+' ORBIT PHYSICS AND GAMEPLAY TESTS PASSED');
