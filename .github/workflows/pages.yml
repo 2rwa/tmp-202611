@@ -9,6 +9,7 @@ on:
       - packed/**
       - scripts/**
       - tests/**
+      - orbit/**
       - .github/workflows/pages.yml
   workflow_dispatch:
 
@@ -40,11 +41,29 @@ jobs:
         run: node scripts/build-site.cjs
       - name: Test gallery, archived games and physics
         run: node tests/game.test.cjs
+      - name: Physics and gameplay model regressions
+        run: node tests/orbit.test.cjs
+      - name: Install headless Chromium
+        run: |
+          npm install --no-save --no-package-lock playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Test UI and real gameplay in Chromium
+        run: node tests/orbit.browser.cjs
+      - name: Save screenshots from real browser
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: orbit-browser-proof
+          path: test-artifacts/
+          if-no-files-found: ignore
       - name: Prepare static site
         run: |
           mkdir -p dist
           cp index.html dist/index.html
           cp -r games dist/games
+          cp -r orbit dist/orbit
+          test -s dist/games/v5-orbit.html
+          test -s dist/orbit/physics.js
           touch dist/.nojekyll
           test -s dist/games/v1-classic.html
           test -s dist/games/v4-speed.html
