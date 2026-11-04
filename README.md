@@ -20,6 +20,7 @@ The first four versions are the original conversation-generated standalone HTML 
 node scripts/build-site.cjs
 node tests/game.test.cjs
 node tests/orbit.test.cjs
+node tests/orbit-paddle.test.cjs
 # Chromium UI/playability test (CI also installs Playwright + Chromium):
 node tests/orbit.browser.cjs
 ```
@@ -39,9 +40,9 @@ The archived HTML pages are self-contained (no packages or network dependencies 
 - Field is a circular specular reflector; ball speed remains constant per level.
 - Targets drift/rotate and bounce before reaching the paddle lane; small circles, triangles and squares can be destroyed.
 - Rotate the curved paddle around the circular boundary via pointer, touch, or Left/Right / A/D keys.
-- Both **front and rear** paddle contacts reflect and fully recharge the ball (100%). Neither side damages the player. Each successful powered target strike costs 34 energy (three powered hits per charge). An unpowered target contact still reflects the ball, cannot damage the object, and costs one LIFE. Three such collisions cause GAME OVER. A brief hit cooldown prevents one overlap from draining multiple lives.
+- Both **front and rear** paddle contacts reflect and fully recharge the ball (100%). Neither side damages the player. Each successful powered target strike costs 34 energy (three powered hits per charge). An unpowered target contact only reflects the ball: no damage, no points and no LIFE loss. Drifting objects can now reach the paddle lane; an object colliding with the paddle costs one LIFE. Three such paddle-object contacts cause GAME OVER. Objects rebound from the paddle and a brief hit cooldown prevents repeated penalties from one overlap.
 - Destroy every target to advance a level. No random reflection angles; reproducible seeded target layouts.
 - `orbit/physics.js` is the stand-alone deterministic gameplay model shared by browser and Node tests. Energy and LIFE are separate from fixed per-level ball speed.
 - `orbit/render.js`, `orbit/game.js`, `orbit/style.css` implement Canvas visualization, controls and HUD.
-- `tests/orbit.test.cjs` validates actual multi-step physics and full game transitions. `tests/orbit.browser.cjs` exercises the production interface in headless Chromium and uploads screenshots via Actions.
+- `tests/orbit.test.cjs` and `tests/orbit-paddle.test.cjs` validate multi-step physics, paddle-object damage, and full game transitions. `tests/orbit.browser.cjs` exercises the production interface in headless Chromium and uploads screenshots via Actions.
 - Pages deployment tests **both** engine gameplay and actual browser input/rendering before publishing.

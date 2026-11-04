@@ -50,11 +50,11 @@ function createRenderer(canvas){
  function drawPaddle(w){
   const a=w.paddleAngle,from=a-PADDLE_HALF,to=a+PADDLE_HALF;
   ctx.save();ctx.lineCap='round';
-  ctx.shadowBlur=24;ctx.shadowColor='#69f6e4';
-  ctx.strokeStyle='#37bed4';ctx.lineWidth=PADDLE_THICK;
+  ctx.shadowBlur=24;ctx.shadowColor=w.damageCooldown>0?'#ff526a':'#69f6e4';
+  ctx.strokeStyle=w.damageCooldown>0?'#ff526a':'#37bed4';ctx.lineWidth=PADDLE_THICK;
   ctx.beginPath();ctx.arc(C.x,C.y,PADDLE_R,from,to);ctx.stroke();
   ctx.shadowBlur=0;
-  ctx.strokeStyle='#ccfffb';ctx.lineWidth=5;
+  ctx.strokeStyle=w.damageCooldown>0?'#ffdfdd':'#ccfffb';ctx.lineWidth=5;
   ctx.beginPath();ctx.arc(C.x,C.y,PADDLE_R-PADDLE_THICK/2+1,from+.012,to-.012);ctx.stroke();
   ctx.strokeStyle='#9feaff';ctx.lineWidth=4;
   ctx.beginPath();ctx.arc(C.x,C.y,PADDLE_R+PADDLE_THICK/2-1,from+.016,to-.016);ctx.stroke();
@@ -80,7 +80,7 @@ function createRenderer(canvas){
  function overlay(w){
   if(w.state==='playing')return;
   ctx.save();const title=w.state==='gameover'?'GAME OVER':w.state==='paused'?'PAUSED':w.state==='levelclear'?'ARENA CLEAR':'READY?';
-  const hint=w.state==='gameover'?'無充電でオブジェクトに3回被弾':w.state==='levelclear'?'次のステージへ':w.state==='paused'?'スペースで再開':'クリック / スペースでスタート';
+  const hint=w.state==='gameover'?'オブジェクトが反射板に3回衝突':w.state==='levelclear'?'次のステージへ':w.state==='paused'?'スペースで再開':'クリック / スペースでスタート';
   ctx.fillStyle='#071326b9';ctx.fillRect(250,245,300,116);
   ctx.textAlign='center';ctx.fillStyle='#f5ffff';ctx.font='800 36px system-ui';ctx.fillText(title,400,287);
   ctx.fillStyle='#8ff5ee';ctx.font='600 15px system-ui';ctx.fillText(hint,400,325);
@@ -93,6 +93,12 @@ function createRenderer(canvas){
   for(const t of w.targets)drawTarget(t,w.elapsed);
   drawPaddle(w);
   drawBall(w);
+  if(w.damageCooldown>0&&w.state==='playing'){
+    ctx.save();ctx.font='bold 19px system-ui';ctx.textAlign='center';
+    ctx.fillStyle='#ff8799';ctx.shadowColor='#ff415c';ctx.shadowBlur=12;
+    ctx.fillText('PADDLE HIT!  LIFE −1',C.x,C.y-14);
+    ctx.restore();
+  }
   overlay(w);
  }
  return{draw};

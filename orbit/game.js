@@ -9,7 +9,7 @@ try{best=Number(localStorage.getItem('orbitBreakerBest')||0)}catch(_){}
 function snapshot(){
  return{state:world.state,score:world.score,best,level:world.level,lives:world.lives,
   remaining:world.targets.length,frontHits:world.frontHits,rearHits:world.rearHits,wallHits:world.wallHits,
-  energy:world.energy,chargedHits:world.chargedHits,unsafeHits:world.unsafeHits,damageCooldown:world.damageCooldown,
+  energy:world.energy,chargedHits:world.chargedHits,paddleObjectHits:world.paddleObjectHits,damageCooldown:world.damageCooldown,
   speed:Math.hypot(world.ball.vx,world.ball.vy),expectedSpeed:engine.speed(),paddleAngle:world.paddleAngle,
   ball:{...world.ball},elapsed:world.elapsed,events:world.events.slice()};
 }

@@ -23,6 +23,7 @@ jobs:
         run: |
           node tests/game.test.cjs
           node tests/orbit.test.cjs
+          node tests/orbit-paddle.test.cjs
       - uses: actions/upload-artifact@v4
         with:
           name: neon-break-versions

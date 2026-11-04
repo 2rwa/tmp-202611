@@ -108,36 +108,41 @@ const {chromium}=require('playwright');
  const emptyTarget={id:20,kind:'circle',x:400,y:300,r:13,vx:0,vy:0,rotation:0,spin:0,hp:2};
  const empty=await page.evaluate(target=>{
    const api=window.__orbitTest;
-   api.setTargets([target]);
-   api.setEnergy(0);
+   api.setTargets([target]);api.setEnergy(0);
    const before=api.inspect(),speed=before.expectedSpeed;
-   api.injectBall(400,270,0,speed);api.tick(.05);
+   for(let i=0;i<4;i++){
+     api.injectBall(400,270,0,speed);api.tick(.05);
+   }
    return {before,after:api.inspect()};
  },emptyTarget);
- assert.equal(empty.after.lives,2);
- assert.equal(empty.after.state,'playing','empty collision should reflect and keep playing');
+ assert.equal(empty.after.lives,3,'uncharged object hits must never cost LIFE');
+ assert.equal(empty.after.state,'playing');
  assert.ok(empty.after.ball.vy<0);
  assert.equal(empty.after.energy,0);
- assert.equal(empty.after.remaining,1,'uncharged hit must not destroy object');
+ assert.equal(empty.after.remaining,1,'uncharged hits cannot destroy objects');
  assert.equal(empty.after.score,empty.before.score);
  assert.equal(await page.locator('#energy').innerText(),'0%');
- assert.equal(await page.locator('#lives').innerText(),'♥♥');
+ assert.equal(await page.locator('#lives').innerText(),'♥♥♥');
  await page.screenshot({path:'test-artifacts/orbit-energy-empty.png'});
- console.log('PASS empty ball reflects from object, costs one LIFE and does not damage target');
- for(let i=0;i<2;i++){
-   const state=await page.evaluate(()=>{
+ console.log('PASS depleted ball reflects from target repeatedly without LIFE loss or damage');
+ for(let i=0;i<3;i++){
+   const state=await page.evaluate(k=>{
      const api=window.__orbitTest;
-     api.skipCooldown();
+     api.setAngle(Math.PI/2);
+     if(k>0)api.skipCooldown();
+     api.setTargets([{id:100+k,kind:'circle',x:400,y:486,r:15,vx:0,vy:30,rotation:0,spin:0,hp:2}]);
      const speed=api.inspect().expectedSpeed;
-     api.injectBall(400,270,0,speed);api.tick(.05);
+     api.injectBall(400,155,speed,0);
+     api.tick(.04);
      return api.inspect();
-   });
-   assert.equal(state.lives,1-i);
-   assert.equal(state.state,i===1?'gameover':'playing');
+   },i);
+   assert.equal(state.paddleObjectHits,i+1,'only real target-paddle contacts cause damage');
+   assert.equal(state.lives,2-i);
+   assert.equal(state.state,i===2?'gameover':'playing');
  }
  assert.equal(await page.locator('#status').innerText(),'GAME OVER');
  await page.screenshot({path:'test-artifacts/orbit-gameover.png'});
- console.log('PASS three uncharged object collisions show GAME OVER; rear paddle causes no loss');
+ console.log('PASS three moving target-paddle collisions trigger GAME OVER in real browser');
  await page.locator('#reset').click();
  assert.equal(await page.locator('#status').innerText(),'READY');
  assert.equal(await page.locator('#lives').innerText(),'♥♥♥');

@@ -12,7 +12,7 @@ check('deterministic target generation: three moving shapes',()=>{
  const a=F.spawnTargets(1,20261104),b=F.spawnTargets(1,20261104);
  assert.deepEqual(a,b);assert.equal(a.length,16);
  assert.equal(new Set(a.map(t=>t.kind)).size,3);
- for(const t of a){assert.ok(Math.hypot(t.vx,t.vy)>12);assert.ok(Math.hypot(t.x-F.C.x,t.y-F.C.y)<170);}
+ for(const t of a){assert.ok(Math.hypot(t.vx,t.vy)>12);assert.ok(Math.hypot(t.x-F.C.x,t.y-F.C.y)<185);}
 });
 check('circular boundary reflects, preserves speed and never loses life',()=>{
  const e=make(),b=e.world.ball,s=e.speed(),p=radial(-Math.PI/2,F.ARENA-F.BALL_R-1);
@@ -78,42 +78,33 @@ check('three powered target hits exhaust energy and require paddle recharge',()=
  e.world.targets=[{...t}, {...far}];
  e.injectBall(400,270,0,s);e.tick(.05);
  assert.equal(e.world.energy,0);
- assert.equal(e.world.lives,2);
+ assert.equal(e.world.lives,3);
  assert.equal(e.world.destroyed,3,'empty ball must never destroy targets');
  assert.equal(e.world.targets[0].hp,1);
  assert.equal(e.world.score,previousScore,'empty collision must award no score');
  assert.ok(e.world.ball.vy<0,'empty collision still reflects');
- assert.equal(e.world.state,'playing','empty ball continues moving after losing a LIFE');
+ assert.equal(e.world.state,'playing','empty ball continues moving without LIFE loss');
  e.setPaddleAngle(Math.PI/2);
  e.injectBall(400,488,0,s);e.tick(.05);
  assert.equal(e.world.energy,100,'paddle should refill empty ball');
  e.injectBall(400,270,0,s);e.tick(.05);
  assert.equal(e.world.destroyed,4,'recharged ball can damage again');
  assert.equal(e.world.energy,100-F.ENERGY_COST);
- assert.equal(e.world.lives,2);
+ assert.equal(e.world.lives,3);
 });
-check('empty collision has damage grace and three separated hits end game',()=>{
- const e=make(),s=e.speed();
- const t={id:20,kind:'circle',x:400,y:300,r:13,vx:0,vy:0,rotation:0,spin:0,hp:2};
+check('empty ball can repeatedly hit a target without losing LIFE',()=>{
+ const e=make(),s=e.speed(),t={id:20,kind:'circle',x:400,y:300,r:13,vx:0,vy:0,rotation:0,spin:0,hp:2};
  e.world.targets=[t];e.world.energy=0;
- function hit(){e.injectBall(400,270,0,s);e.tick(.05);}
- hit();assert.equal(e.world.lives,2);assert.equal(e.world.unsafeHits,1);
- hit();assert.equal(e.world.lives,2,'cooldown prevents double penalty');
- assert.equal(e.world.targets[0].hp,2);
- e.world.damageCooldown=0;hit();
- assert.equal(e.world.lives,1);assert.equal(e.world.state,'playing');
- e.world.damageCooldown=0;hit();
- assert.equal(e.world.lives,0);assert.equal(e.world.state,'gameover');
- assert.equal(e.world.targets[0].hp,2);
- assert.ok(e.world.events.some(x=>x.type==='gameover'));
- e.start();assert.equal(e.world.state,'playing');assert.equal(e.world.lives,3);
- assert.equal(e.world.energy,100);
+ for(let i=0;i<20;i++){e.injectBall(400,270,0,s);e.tick(.05);
+  assert.equal(e.world.lives,3);assert.equal(e.world.energy,0);
+  assert.equal(t.hp,2);assert.equal(e.world.score,0);assert.ok(e.world.ball.vy<0);}
+ assert.equal(e.world.state,'playing');assert.equal(e.world.paddleObjectHits,0);
 });
 check('drifting targets remain within their assigned inner zone',()=>{
  const e=make();const t=e.world.targets[0],initial={x:t.x,y:t.y};
  for(let i=0;i<1000;i++)e.tick(1/120);
  assert.ok(Math.hypot(t.x-initial.x,t.y-initial.y)>1);
- for(const b of e.world.targets)assert.ok(Math.hypot(b.x-F.C.x,b.y-F.C.y)<F.ARENA-50);
+ for(const b of e.world.targets)assert.ok(Math.hypot(b.x-F.C.x,b.y-F.C.y)<F.PADDLE_R+1);
 });
 check('target circle collision really destroys object and scores points',()=>{
  const e=make();e.world.targets=[{id:0,kind:'circle',x:F.C.x,y:F.C.y,r:13,vx:0,vy:0,rotation:0,spin:0,hp:1}];
@@ -143,6 +134,7 @@ check('playable deterministic simulation: speed bounded, target hits and proper 
   assert.ok(Math.hypot(b.x-F.C.x,b.y-F.C.y)<F.ARENA+1,'ball escaped circle');
   assert.ok(maxSpeed<=Math.max(s,e.speed())+.01,'speed jumped');
   assert.ok(e.world.energy>=0&&e.world.energy<=F.ENERGY_MAX);
+  assert.ok(e.world.lives>=0&&e.world.lives<=3);
  }
  console.log('SIMULATION score='+e.world.score+' destroyed='+e.world.destroyed+' wallHits='+wall+' frontHits='+e.world.frontHits+' rearHits='+e.world.rearHits+' state='+e.world.state);
  assert.ok(e.world.frontHits>=1,'tracking controller should interact with the paddle');
