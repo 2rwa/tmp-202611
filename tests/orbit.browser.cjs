@@ -59,7 +59,7 @@ const {chromium}=require('playwright');
  console.log('PASS real start, keyboard rotation, pause and resume');
  const front=await page.evaluate(()=>{
    const api=window.__orbitTest;
-   api.setAngle(Math.PI/2);api.setEnergy(0);
+   api.setTargets([]);api.setAngle(Math.PI/2);api.setEnergy(0);
    const prev=api.inspect().frontHits,speed=api.inspect().expectedSpeed;
    api.injectBall(400,488,0,speed);api.tick(.04);
    const a=api.inspect();

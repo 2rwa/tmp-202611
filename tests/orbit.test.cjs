@@ -30,7 +30,7 @@ check('normal reflection and oblique angle are calculated, not randomized',()=>{
 check('paddle inner/front face reflects inward at all orientations and sane offsets',()=>{
  const s=F.speedAt(1),inner=F.PADDLE_R-F.PADDLE_THICK/2-F.BALL_R;
  for(let i=0;i<24;i++){
-  const a=i*F.TAU/24,e=make();e.setPaddleAngle(a);e.world.energy=0;
+  const a=i*F.TAU/24,e=make();e.world.targets=[];e.setPaddleAngle(a);e.world.energy=0;
   const theta=a+(i%3-1)*.11,p=radial(theta,inner-4),v=outbound(theta,s);
   e.injectBall(p.x,p.y,v.vx,v.vy);e.tick(.05);
   assert.equal(e.world.frontHits,1,'front hit '+i);
