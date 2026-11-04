@@ -1,0 +1,98 @@
+      if(state==='playing')state='paused'; else if(state==='paused')state='playing'; else if(state==='ready')state='playing';
+      syncUI();
+    }
+    function addScore(points){
+      score+=points;
+      if(score>best){best=score;try{localStorage.setItem('neonBreakBest',String(best));}catch(_){}}
+      syncUI();
+    }
+    function pop(x,y,color,n=9){
+      for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,v=45+Math.random()*135;
+        particles.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,t:0,life:.35+Math.random()*.35,color});}
+    }
+    function circleRect(b,r){const cx=clamp(b.x,r.x,r.x+r.w),cy=clamp(b.y,r.y,r.y+r.h);const dx=b.x-cx,dy=b.y-cy;return dx*dx+dy*dy<b.r*b.r;}
+    function update(dt){
+      if(pointerX!==null){paddle.x+=(clamp(pointerX-paddle.w/2,5,W-paddle.w-5)-paddle.x)*Math.min(1,dt*18);}
+      else {const dir=(right?1:0)-(left?1:0);paddle.x=clamp(paddle.x+dir*580*dt,5,W-paddle.w-5);}
+      particles=particles.filter(p=>p.t<p.life);
+      for(const p of particles){p.t+=dt;p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=160*dt;}
+      if(state!=='playing'){
+        if(state==='ready'){ball.x=paddle.x+paddle.w/2;ball.y=paddle.y-ball.r-2;}
+        return;
+      }
+      const steps=Math.max(1,Math.ceil(dt/(1/180))),s=dt/steps;
+      for(let j=0;j<steps;j++){
+        const prevX=ball.x,prevY=ball.y;
+        ball.x+=ball.vx*s;ball.y+=ball.vy*s;
+        if(ball.x-ball.r<8){ball.x=8+ball.r;ball.vx=Math.abs(ball.vx);}
+        if(ball.x+ball.r>W-8){ball.x=W-8-ball.r;ball.vx=-Math.abs(ball.vx);}
+        if(ball.y-ball.r<8){ball.y=8+ball.r;ball.vy=Math.abs(ball.vy);}
+        if(ball.vy>0&&circleRect(ball,paddle)&&prevY+ball.r<=paddle.y+9){
+          ball.y=paddle.y-ball.r-.1;
+          let speed=Math.min(Math.hypot(ball.vx,ball.vy)*1.015,720);
+          const frac=clamp((ball.x-(paddle.x+paddle.w/2))/(paddle.w/2),-1,1);
+          ball.vx=speed*Math.sin(frac*1.13);
+          ball.vy=-Math.abs(speed*Math.cos(frac*1.13));
+          pop(ball.x,paddle.y,'#69f4e9',5);
+        }
+        for(let i=bricks.length-1;i>=0;i--){
+          const b=bricks[i];if(!circleRect(ball,b))continue;
+          const priorOutsideX=prevX+ball.r<=b.x||prevX-ball.r>=b.x+b.w;
+          const priorOutsideY=prevY+ball.r<=b.y||prevY-ball.r>=b.y+b.h;
+          if(priorOutsideX&&!priorOutsideY)ball.vx*=-1;
+          else if(priorOutsideY&&!priorOutsideX)ball.vy*=-1;
+          else {
+            const ox=Math.min(Math.abs(ball.x+ball.r-b.x),Math.abs(b.x+b.w-(ball.x-ball.r)));
+            const oy=Math.min(Math.abs(ball.y+ball.r-b.y),Math.abs(b.y+b.h-(ball.y-ball.r)));
+            if(ox<oy)ball.vx*=-1;else ball.vy*=-1;
+          }
+          b.hp--;addScore(b.hp===0?10*level:5*level);pop(ball.x,ball.y,b.color,b.hp===0?11:5);
+          if(b.hp<=0)bricks.splice(i,1);
+          break;
+        }
+        if(ball.y-ball.r>H){
+          lives--;pop(ball.x,H-10,'#ff849b',20);
+          if(lives<=0){state='gameover';}
+          else {state='ready';resetBall();}
+          syncUI();break;
+        }
+        if(bricks.length===0){addScore(100*level);nextLevel();break;}
+      }
+      trails.push({x:ball.x,y:ball.y,t:0});if(trails.length>12)trails.shift();
+      for(const t of trails)t.t+=dt;
+    }
+    function roundRect(x,y,w,h,r){ctx.beginPath();ctx.roundRect(x,y,w,h,r);}
+    function draw(){
+      const bg=ctx.createLinearGradient(0,0,0,H);bg.addColorStop(0,'#101c36');bg.addColorStop(1,'#0a1427');ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
+      ctx.strokeStyle='#29416938';ctx.lineWidth=1;
+      for(let x=20;x<W;x+=40){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
+      for(let y=20;y<H;y+=40){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+      for(const s of stars){ctx.fillStyle='#96c8ff55';ctx.beginPath();ctx.arc(s.x,s.y,s.r,0,Math.PI*2);ctx.fill();}
+      ctx.shadowBlur=13;
+      for(const b of bricks){
+        ctx.shadowColor=b.color;ctx.fillStyle=b.color;roundRect(b.x,b.y,b.w,b.h,5);ctx.fill();
+        ctx.shadowBlur=0;ctx.fillStyle='#ffffff48';roundRect(b.x+4,b.y+3,b.w-8,3,2);ctx.fill();
+        if(b.hp>1){ctx.strokeStyle='#ffffffa0';ctx.lineWidth=1.5;roundRect(b.x+4,b.y+4,b.w-8,b.h-8,3);ctx.stroke();}
+        ctx.shadowBlur=13;
+      }
+      ctx.shadowBlur=17;ctx.shadowColor='#5de9e2';
+      const pgrad=ctx.createLinearGradient(paddle.x,paddle.y,paddle.x,paddle.y+paddle.h);pgrad.addColorStop(0,'#b9fff4');pgrad.addColorStop(1,'#39c5d5');
+      ctx.fillStyle=pgrad;roundRect(paddle.x,paddle.y,paddle.w,paddle.h,7);ctx.fill();ctx.shadowBlur=0;
+      if(state==='playing'||state==='ready'){
+        for(let i=0;i<trails.length;i++){const t=trails[i];ctx.fillStyle=`rgba(103,236,232,${(i/trails.length)*.22})`;ctx.beginPath();ctx.arc(t.x,t.y,ball.r*(.3+i/trails.length*.55),0,Math.PI*2);ctx.fill();}
+      }
+      ctx.shadowColor='#c1fbff';ctx.shadowBlur=22;ctx.fillStyle='#f4ffff';ctx.beginPath();ctx.arc(ball.x,ball.y,ball.r,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;
+      for(const p of particles){ctx.globalAlpha=Math.max(0,1-p.t/p.life);ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(p.x,p.y,2.7,0,Math.PI*2);ctx.fill();}ctx.globalAlpha=1;
+      if(state!=='playing'){
+        ctx.fillStyle='#071225bd';ctx.fillRect(0,0,W,H);
+        let title='',hint='',small='';
+        if(state==='ready'){title=level===1&&score===0?'READY?':`LEVEL ${level}`;hint='スペース / クリックでスタート';small='ブロックを全部消そう';}
+        if(state==='paused'){title='PAUSED';hint='スペース / クリックで再開';small='';}
+        if(state==='gameover'){title='GAME OVER';hint='クリックでリトライ';small=`SCORE ${score.toLocaleString('ja-JP')}`;}
+        if(state==='won'){title='CLEAR!';hint='クリックでリトライ';small=`SCORE ${score.toLocaleString('ja-JP')}`;}
+        ctx.textAlign='center';ctx.fillStyle='#f2fbff';ctx.font='800 49px system-ui, sans-serif';ctx.fillText(title,W/2,H/2-22);
+        ctx.font='600 21px system-ui, sans-serif';ctx.fillStyle='#7deae5';ctx.fillText(hint,W/2,H/2+23);
+        ctx.font='16px system-ui, sans-serif';ctx.fillStyle='#b6c7e4';ctx.fillText(small,W/2,H/2+57);
+      }
+    }
+    function frame(now){let dt=last?Math.min((now-last)/1000,.033):1/60;last=now;update(dt);draw();requestAnimationFrame(frame);}

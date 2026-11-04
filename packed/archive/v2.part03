@@ -1,0 +1,202 @@
+      ctx.fill();
+
+      if (b.hp > 1) {
+        ctx.strokeStyle = '#ffffffb0';
+        ctx.lineWidth = 1.5;
+        if (b.shape === 'circle') ellipsePath(b.x + 4, b.y + 4, b.w - 8, b.h - 8);
+        else if (b.shape === 'triangle') trianglePath(b.x + 3, b.y + 3, b.w - 6, b.h - 6);
+        else roundRectPath(b.x + 4, b.y + 4, b.w - 8, b.h - 8, 3);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function drawPaddle() {
+      ctx.save();
+      ctx.shadowColor = '#5de9e2';
+      ctx.shadowBlur = 22;
+
+      const grad = ctx.createRadialGradient(
+        paddle.x + paddle.w * 0.45, paddle.y + paddle.h * 0.35, paddle.w * 0.08,
+        paddle.x + paddle.w * 0.5, paddle.y + paddle.h * 0.55, paddle.w * 0.65
+      );
+      grad.addColorStop(0, '#dcfffb');
+      grad.addColorStop(0.42, '#8af2ea');
+      grad.addColorStop(1, '#2da9c9');
+      ctx.fillStyle = grad;
+      ellipsePath(paddle.x, paddle.y, paddle.w, paddle.h);
+      ctx.fill();
+
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#ffffff55';
+      ellipsePath(paddle.x + paddle.w * 0.16, paddle.y + paddle.h * 0.14, paddle.w * 0.34, paddle.h * 0.24);
+      ctx.fill();
+
+      ctx.strokeStyle = '#d7ffff80';
+      ctx.lineWidth = 1.2;
+      ellipsePath(paddle.x + 1, paddle.y + 1, paddle.w - 2, paddle.h - 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawBall() {
+      if (state === 'playing' || state === 'ready') {
+        for (let i = 0; i < trails.length; i++) {
+          const t = trails[i];
+          ctx.fillStyle = `rgba(103,236,232,${(i / trails.length) * .22})`;
+          ctx.beginPath();
+          ctx.arc(t.x, t.y, ball.r * (.3 + i / trails.length * .55), 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      ctx.shadowColor = '#c1fbff';
+      ctx.shadowBlur = 22;
+      ctx.fillStyle = '#f4ffff';
+      ctx.beginPath();
+      ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+
+    function drawOverlay() {
+      if (state === 'playing') return;
+      ctx.fillStyle = '#071225bd';
+      ctx.fillRect(0, 0, W, H);
+      let title = '';
+      let hint = '';
+      let small = '';
+      if (state === 'ready') {
+        title = level === 1 && score === 0 ? 'READY?' : `LEVEL ${level}`;
+        hint = 'スペース / クリックでスタート';
+        small = '図形ブロックを全部消そう';
+      }
+      if (state === 'paused') {
+        title = 'PAUSED';
+        hint = 'スペース / クリックで再開';
+      }
+      if (state === 'gameover') {
+        title = 'GAME OVER';
+        hint = 'クリックでリトライ';
+        small = `SCORE ${score.toLocaleString('ja-JP')}`;
+      }
+      if (state === 'won') {
+        title = 'CLEAR!';
+        hint = 'クリックでリトライ';
+        small = `SCORE ${score.toLocaleString('ja-JP')}`;
+      }
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#f2fbff';
+      ctx.font = '800 49px system-ui, sans-serif';
+      ctx.fillText(title, W / 2, H / 2 - 22);
+      ctx.font = '600 21px system-ui, sans-serif';
+      ctx.fillStyle = '#7deae5';
+      ctx.fillText(hint, W / 2, H / 2 + 23);
+      ctx.font = '16px system-ui, sans-serif';
+      ctx.fillStyle = '#b6c7e4';
+      ctx.fillText(small, W / 2, H / 2 + 57);
+    }
+
+    function draw() {
+      const bg = ctx.createLinearGradient(0, 0, 0, H);
+      bg.addColorStop(0, '#101c36');
+      bg.addColorStop(1, '#0a1427');
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, W, H);
+
+      ctx.strokeStyle = '#29416938';
+      ctx.lineWidth = 1;
+      for (let x = 20; x < W; x += 40) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, H);
+        ctx.stroke();
+      }
+      for (let y = 20; y < H; y += 40) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(W, y);
+        ctx.stroke();
+      }
+
+      for (const s of stars) {
+        ctx.fillStyle = '#96c8ff55';
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      for (const b of bricks) drawBrick(b);
+      drawPaddle();
+      drawBall();
+
+      for (const p of particles) {
+        ctx.globalAlpha = Math.max(0, 1 - p.t / p.life);
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 2.7, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+
+      drawOverlay();
+    }
+
+    function frame(now) {
+      const dt = last ? Math.min((now - last) / 1000, .033) : 1 / 60;
+      last = now;
+      update(dt);
+      draw();
+      requestAnimationFrame(frame);
+    }
+
+    function position(e) {
+      const r = canvas.getBoundingClientRect();
+      pointerX = clamp((e.clientX - r.left) / r.width * W, 0, W);
+    }
+
+    canvas.addEventListener('pointermove', e => { position(e); });
+    canvas.addEventListener('pointerdown', e => {
+      position(e);
+      try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
+      if (state !== 'playing') start();
+    });
+    canvas.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse') pointerX = null; });
+
+    window.addEventListener('keydown', e => {
+      if (['ArrowLeft','ArrowRight','Space','KeyA','KeyD','KeyP','KeyR'].includes(e.code)) e.preventDefault();
+      if (e.code === 'ArrowLeft' || e.code === 'KeyA') { left = true; pointerX = null; }
+      if (e.code === 'ArrowRight' || e.code === 'KeyD') { right = true; pointerX = null; }
+      if (e.code === 'Space') {
+        if (state === 'playing') togglePause();
+        else start();
+      }
+      if (e.code === 'KeyP') togglePause();
+      if (e.code === 'KeyR') restart();
+    });
+    window.addEventListener('keyup', e => {
+      if (e.code === 'ArrowLeft' || e.code === 'KeyA') left = false;
+      if (e.code === 'ArrowRight' || e.code === 'KeyD') right = false;
+    });
+    window.addEventListener('blur', () => {
+      left = false;
+      right = false;
+      if (state === 'playing') {
+        state = 'paused';
+        syncUI();
+      }
+    });
+
+    els.start.addEventListener('click', () => {
+      if (state === 'playing') return;
+      start();
+    });
+    els.pause.addEventListener('click', togglePause);
+    els.reset.addEventListener('click', restart);
+
+    updatePaddleShape();
+    restart();
+    requestAnimationFrame(frame);
+  })();
+  </script>
+</body>
+</html>

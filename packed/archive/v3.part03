@@ -1,0 +1,199 @@
+      const target = pointerX !== null
+        ? clamp(pointerX - paddle.w / 2, 5, W - paddle.w - 5)
+        : clamp(paddle.x + ((right ? 1 : 0) - (left ? 1 : 0)) * 580 * dt, 5, W - paddle.w - 5);
+      const maxSpeed = pointerX !== null ? 1050 : 580;
+      paddle.x = clamp(paddle.x + clamp(target - paddle.x, -maxSpeed * dt, maxSpeed * dt), 5, W - paddle.w - 5);
+      return (paddle.x - oldX) / dt;
+    }
+
+    function update(dt) {
+      particles = particles.filter(p => p.t < p.life);
+      for (const p of particles) {
+        p.t += dt;
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.vy += 160 * dt;
+      }
+
+      if (state !== 'playing') {
+        movePaddle(dt);
+        if (state === 'ready') {
+          ball.x = paddle.x + paddle.w / 2;
+          ball.y = paddle.y - ball.r - 1;
+        }
+        return;
+      }
+
+      // ボールと移動中のパドルを同じ小刻みな時間ステップで進める。
+      const steps = Math.max(1, Math.ceil(dt / (1 / 240)));
+      const s = dt / steps;
+      for (let j = 0; j < steps; j++) {
+        const paddleVX = movePaddle(s);
+        ball.x += ball.vx * s;
+        ball.y += ball.vy * s;
+
+        resolveWallCollision();
+        collideBallPaddle(paddleVX);
+        collideBricks();
+
+        if (ball.y - ball.r > H) {
+          lives--;
+          pop(ball.x, H - 10, '#ff849b', 20);
+          if (lives <= 0) state = 'gameover';
+          else { state = 'ready'; resetBall(); }
+          syncUI();
+          break;
+        }
+        if (bricks.length === 0) {
+          addScore(100 * level);
+          nextLevel();
+          break;
+        }
+      }
+
+      trails.push({ x: ball.x, y: ball.y, t: 0 });
+      if (trails.length > 12) trails.shift();
+      for (const t of trails) t.t += dt;
+    }
+
+    function roundRectPath(x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.roundRect(x, y, w, h, r);
+    }
+
+    function ellipsePath(x, y, w, h) {
+      ctx.beginPath();
+      ctx.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
+    }
+
+    function trianglePath(b) {
+      const verts = triangleVertices(b);
+      ctx.beginPath();
+      ctx.moveTo(verts[0].x, verts[0].y);
+      ctx.lineTo(verts[1].x, verts[1].y);
+      ctx.lineTo(verts[2].x, verts[2].y);
+      ctx.closePath();
+    }
+
+    function drawBrick(b) {
+      ctx.save();
+      ctx.shadowColor = b.color;
+      ctx.shadowBlur = 13;
+      ctx.fillStyle = b.color;
+      if (b.shape === 'circle') {
+        ctx.beginPath();
+        ctx.arc(b.x + b.w / 2, b.y + b.h / 2, Math.min(b.w, b.h) * .48, 0, Math.PI * 2);
+      } else if (b.shape === 'triangle') trianglePath(b);
+      else roundRectPath(b.x, b.y, b.w, b.h, 2);
+      ctx.fill();
+
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#ffffff65';
+      ctx.beginPath();
+      ctx.arc(b.x + b.w * .38, b.y + b.h * .28, 2.6, 0, Math.PI * 2);
+      ctx.fill();
+      if (b.hp > 1) {
+        ctx.strokeStyle = '#ffffffb0';
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.arc(b.x + b.w / 2, b.y + b.h / 2, 4.5, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function drawPaddle() {
+      ctx.save();
+      ctx.shadowColor = '#5de9e2';
+      ctx.shadowBlur = 22;
+
+      const grad = ctx.createRadialGradient(
+        paddle.x + paddle.w * 0.45, paddle.y + paddle.h * 0.35, paddle.w * 0.08,
+        paddle.x + paddle.w * 0.5, paddle.y + paddle.h * 0.55, paddle.w * 0.65
+      );
+      grad.addColorStop(0, '#dcfffb');
+      grad.addColorStop(0.42, '#8af2ea');
+      grad.addColorStop(1, '#2da9c9');
+      ctx.fillStyle = grad;
+      ellipsePath(paddle.x, paddle.y, paddle.w, paddle.h);
+      ctx.fill();
+
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#ffffff55';
+      ellipsePath(paddle.x + paddle.w * 0.16, paddle.y + paddle.h * 0.14, paddle.w * 0.34, paddle.h * 0.24);
+      ctx.fill();
+
+      ctx.strokeStyle = '#d7ffff80';
+      ctx.lineWidth = 1.2;
+      ellipsePath(paddle.x + 1, paddle.y + 1, paddle.w - 2, paddle.h - 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawBall() {
+      if (state === 'playing' || state === 'ready') {
+        for (let i = 0; i < trails.length; i++) {
+          const t = trails[i];
+          ctx.fillStyle = `rgba(103,236,232,${(i / trails.length) * .22})`;
+          ctx.beginPath();
+          ctx.arc(t.x, t.y, ball.r * (.3 + i / trails.length * .55), 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      ctx.shadowColor = '#c1fbff';
+      ctx.shadowBlur = 22;
+      ctx.fillStyle = '#f4ffff';
+      ctx.beginPath();
+      ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+
+    function drawOverlay() {
+      if (state === 'playing') return;
+      ctx.fillStyle = '#071225bd';
+      ctx.fillRect(0, 0, W, H);
+      let title = '';
+      let hint = '';
+      let small = '';
+      if (state === 'ready') {
+        title = level === 1 && score === 0 ? 'READY?' : `LEVEL ${level}`;
+        hint = 'スペース / クリックでスタート';
+        small = '図形ブロックを全部消そう';
+      }
+      if (state === 'paused') {
+        title = 'PAUSED';
+        hint = 'スペース / クリックで再開';
+      }
+      if (state === 'gameover') {
+        title = 'GAME OVER';
+        hint = 'クリックでリトライ';
+        small = `SCORE ${score.toLocaleString('ja-JP')}`;
+      }
+      if (state === 'won') {
+        title = 'CLEAR!';
+        hint = 'クリックでリトライ';
+        small = `SCORE ${score.toLocaleString('ja-JP')}`;
+      }
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#f2fbff';
+      ctx.font = '800 49px system-ui, sans-serif';
+      ctx.fillText(title, W / 2, H / 2 - 22);
+      ctx.font = '600 21px system-ui, sans-serif';
+      ctx.fillStyle = '#7deae5';
+      ctx.fillText(hint, W / 2, H / 2 + 23);
+      ctx.font = '16px system-ui, sans-serif';
+      ctx.fillStyle = '#b6c7e4';
+      ctx.fillText(small, W / 2, H / 2 + 57);
+    }
+
+    function draw() {
+      const bg = ctx.createLinearGradient(0, 0, 0, H);
+      bg.addColorStop(0, '#101c36');
+      bg.addColorStop(1, '#0a1427');
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, W, H);
+
+      ctx.strokeStyle = '#29416938';
+      ctx.lineWidth = 1;
+      for (let x = 20; x < W; x += 40) {

@@ -2,7 +2,7 @@
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const vm=require('node:vm');
-const html=fs.readFileSync('index.html','utf8');
+const html=fs.readFileSync('games/v4-speed.html','utf8');
 assert.match(html,/<canvas[^>]*id="game"/);
 for(const id of ['score','best','level','lives','start','pause','reset'])assert.ok(html.includes('id="'+id+'"'));
 const m=html.match(/<script>([\s\S]*?)<\/script>/);
@@ -37,3 +37,26 @@ testCase('all shapes have real geometry collisions',()=>{for(const shape of ['ci
 testCase('UI buttons update state and visible label',()=>{g.restart();listeners['start:click']();assert.equal(g.state,'playing');listeners['pause:click']();assert.equal(g.state,'paused');assert.equal(hud.pause.textContent,'再開');listeners['pause:click']();assert.equal(g.state,'playing');listeners['reset:click']();assert.equal(g.state,'ready');});
 testCase('simulation stays within fixed level speed',()=>{g.restart();g.start();for(let i=0;i<500;i++){g.update(1/120);g.draw();assert.ok(speed()<=350.001);if(g.state!=='playing')break;}});
 console.log('ALL '+passed+' REGRESSION TESTS PASSED');
+
+testCase('gallery contains four playable links',()=>{
+  const gallery=fs.readFileSync('index.html','utf8');
+  for(const name of ['v1-classic','v2-shapes','v3-reflections','v4-speed']){
+    const path='games/'+name+'.html';
+    assert.ok(gallery.includes('href="'+path+'"'),'missing menu link '+path);
+    assert.ok(fs.existsSync(path),'missing playable page '+path);
+  }
+});
+testCase('all archived pages are standalone and have valid JavaScript',()=>{
+  const sources=new Set();
+  for(const name of ['v1-classic','v2-shapes','v3-reflections','v4-speed']){
+    const path='games/'+name+'.html',page=fs.readFileSync(path,'utf8');
+    assert.match(page,/<canvas[^>]+id="game"/);
+    assert.match(page,/<\/html>\s*$/i);
+    const match=page.match(/<script>([\s\S]*?)<\/script>/);
+    assert.ok(match,'missing script in '+path);
+    new vm.Script(match[1],{filename:path});
+    sources.add(page);
+  }
+  assert.equal(sources.size,4,'archived versions should be distinct');
+});
+console.log('GALLERY + ARCHIVE VALIDATION COMPLETE');

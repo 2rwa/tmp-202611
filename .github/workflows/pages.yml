@@ -5,6 +5,9 @@ on:
     branches: [main]
     paths:
       - index.html
+      - games/**
+      - packed/**
+      - scripts/**
       - tests/**
       - .github/workflows/pages.yml
   workflow_dispatch:
@@ -18,7 +21,7 @@ concurrency:
 
 jobs:
   deploy:
-    name: Test and deploy
+    name: Test and deploy archive
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment:
@@ -33,14 +36,18 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Verify game and collision regressions
+      - name: Assemble all four historical HTML versions
+        run: node scripts/build-site.cjs
+      - name: Test gallery, archived games and physics
         run: node tests/game.test.cjs
-      - name: Prepare standalone static site
+      - name: Prepare static site
         run: |
           mkdir -p dist
           cp index.html dist/index.html
+          cp -r games dist/games
           touch dist/.nojekyll
-          test -s dist/index.html
+          test -s dist/games/v1-classic.html
+          test -s dist/games/v4-speed.html
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4
         with:

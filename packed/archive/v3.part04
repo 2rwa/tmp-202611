@@ -1,0 +1,94 @@
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, H);
+        ctx.stroke();
+      }
+      for (let y = 20; y < H; y += 40) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(W, y);
+        ctx.stroke();
+      }
+
+      for (const s of stars) {
+        ctx.fillStyle = '#96c8ff55';
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      for (const b of bricks) drawBrick(b);
+      drawPaddle();
+      drawBall();
+
+      for (const p of particles) {
+        ctx.globalAlpha = Math.max(0, 1 - p.t / p.life);
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 2.7, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+
+      drawOverlay();
+    }
+
+    function frame(now) {
+      const dt = last ? Math.min((now - last) / 1000, .033) : 1 / 60;
+      last = now;
+      update(dt);
+      draw();
+      requestAnimationFrame(frame);
+    }
+
+    function position(e) {
+      const r = canvas.getBoundingClientRect();
+      pointerX = clamp((e.clientX - r.left) / r.width * W, 0, W);
+    }
+
+    canvas.addEventListener('pointermove', e => { position(e); });
+    canvas.addEventListener('pointerdown', e => {
+      position(e);
+      try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
+      if (state !== 'playing') start();
+    });
+    canvas.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse') pointerX = null; });
+
+    window.addEventListener('keydown', e => {
+      if (['ArrowLeft','ArrowRight','Space','KeyA','KeyD','KeyP','KeyR'].includes(e.code)) e.preventDefault();
+      if (e.code === 'ArrowLeft' || e.code === 'KeyA') { left = true; pointerX = null; }
+      if (e.code === 'ArrowRight' || e.code === 'KeyD') { right = true; pointerX = null; }
+      if (e.code === 'Space') {
+        if (state === 'playing') togglePause();
+        else start();
+      }
+      if (e.code === 'KeyP') togglePause();
+      if (e.code === 'KeyR') restart();
+    });
+    window.addEventListener('keyup', e => {
+      if (e.code === 'ArrowLeft' || e.code === 'KeyA') left = false;
+      if (e.code === 'ArrowRight' || e.code === 'KeyD') right = false;
+    });
+    window.addEventListener('blur', () => {
+      left = false;
+      right = false;
+      if (state === 'playing') {
+        state = 'paused';
+        syncUI();
+      }
+    });
+
+    els.start.addEventListener('click', () => {
+      if (state === 'playing') return;
+      start();
+    });
+    els.pause.addEventListener('click', togglePause);
+    els.reset.addEventListener('click', restart);
+
+    updatePaddleShape();
+    restart();
+    requestAnimationFrame(frame);
+  })();
+  </script>
+</body>
+</html>

@@ -7,6 +7,7 @@ permissions:
   contents: write
 jobs:
   test:
+    name: Rebuild historical versions and regressions
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -16,27 +17,23 @@ jobs:
           node-version: '22'
       - name: Synchronize before generating output
         run: git pull --rebase origin main
-      - name: Reassemble source HTML from GitHub-safe chunks
-        shell: bash
-        run: |
-          cat packed/game.html.part0 packed/game.html.part1 packed/game.html.part2 packed/game.html.part3 > index.html
-          printf '\n' >> index.html
-          echo 'e47adb8ccc1a5b2c7b4691607eb1f8ab296aaa8dd90eecbdc831fed58cdcd0da  index.html' | sha256sum -c -
-          node -e "const fs=require('fs');const s=fs.readFileSync('index.html','utf8');const m=s.match(/<script>([\\s\\S]*?)<\\/script>/); if(!m)process.exit(1);fs.writeFileSync('/tmp/game-check.js',m[1]);"
-          node --check /tmp/game-check.js
-      - name: Regression tests (geometry, bounce, speed, UI)
+      - name: Assemble original historical HTML snapshots
+        run: node scripts/build-site.cjs
+      - name: Regression tests (physics, gallery, archived scripts)
         run: node tests/game.test.cjs
       - uses: actions/upload-artifact@v4
         with:
-          name: playable-brick-breaker
-          path: index.html
-      - name: Commit playable HTML on main
+          name: neon-break-versions
+          path: |
+            index.html
+            games/
+      - name: Commit four playable HTML snapshots
         shell: bash
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add index.html
+          git add games/
           if ! git diff --cached --quiet; then
-            git commit -m 'build: generate tested playable brick breaker'
+            git commit -m 'build: archive four tested playable versions'
             git push origin HEAD:main
           fi

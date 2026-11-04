@@ -1,0 +1,183 @@
+    const stars = Array.from({ length: 48 }, (_, i) => ({ x: (i * 173 + 57) % W, y: (i * 101 + 23) % H, r: i % 5 === 0 ? 1.3 : 0.75 }));
+
+    function syncUI() {
+      els.score.textContent = score.toLocaleString('ja-JP');
+      els.best.textContent = best.toLocaleString('ja-JP');
+      els.level.textContent = level;
+      els.lives.textContent = '♥ '.repeat(lives).trim() || '—';
+      els.start.textContent = state === 'playing' ? 'プレイ中' : state === 'paused' ? '再開' : state === 'ready' ? 'スタート' : 'もう一度';
+      els.pause.textContent = state === 'paused' ? '再開' : '一時停止';
+    }
+
+    function updatePaddleShape() {
+      paddle.rx = paddle.w / 2;
+      paddle.ry = paddle.h / 2;
+    }
+
+    // 固定シードの配置。ゲーム内容は再現可能で、反射に乱数は使わない。
+    function seededRandom(seed) {
+      let x = seed >>> 0;
+      return () => {
+        x = (Math.imul(1664525, x) + 1013904223) >>> 0;
+        return x / 4294967296;
+      };
+    }
+
+    function newBricks() {
+      bricks = [];
+      const rand = seededRandom(0x2bc9a5 + level * 15427);
+      const cols = 15;
+      const rows = Math.min(6 + Math.floor(level / 2), 8);
+      const shapes = ['circle', 'triangle', 'rect'];
+
+      // 小さな図形を、マス目の中で揺らしながら疎らに配置する。
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          if (rand() < (r % 3 === 0 ? 0.23 : 0.34)) continue;
+          const shape = shapes[Math.floor(rand() * shapes.length)];
+          const size = 23 + rand() * 7;
+          const w = size;
+          const h = size;
+          const x = 40 + c * 50 + (rand() - 0.5) * 11;
+          const y = 56 + r * 43 + (rand() - 0.5) * 10;
+          const hp = level >= 3 && rand() < 0.12 ? 2 : 1;
+          bricks.push({
+            x, y, w, h, hp, maxHp: hp,
+            color: colors[(r * 2 + c + level) % colors.length],
+            shape,
+            // 0°,45°,90°...315°。斜面がさまざまな方向を向く。
+            rotation: Math.floor(rand() * 8) * Math.PI / 4
+          });
+        }
+      }
+    }
+
+    function resetBall() {
+      paddle.x = (W - paddle.w) / 2;
+      ball.x = paddle.x + paddle.w / 2;
+      ball.y = paddle.y - ball.r - 1;
+      const speed = Math.min(380 + level * 24, 520);
+      const angle = -Math.PI / 2 + (level % 2 === 0 ? 0.18 : -0.18);
+      ball.vx = Math.cos(angle) * speed;
+      ball.vy = Math.sin(angle) * speed;
+      trails = [];
+    }
+
+    function restart() {
+      score = 0;
+      level = 1;
+      lives = 3;
+      particles = [];
+      state = 'ready';
+      newBricks();
+      resetBall();
+      syncUI();
+    }
+
+    function nextLevel() {
+      level++;
+      newBricks();
+      resetBall();
+      state = 'ready';
+      syncUI();
+    }
+
+    function start() {
+      if (state === 'playing') return;
+      if (state === 'gameover' || state === 'won') restart();
+      state = 'playing';
+      syncUI();
+    }
+
+    function togglePause() {
+      if (state === 'playing') state = 'paused';
+      else if (state === 'paused') state = 'playing';
+      else if (state === 'ready') state = 'playing';
+      syncUI();
+    }
+
+    function addScore(points) {
+      score += points;
+      if (score > best) {
+        best = score;
+        try { localStorage.setItem('neonBreakBest', String(best)); } catch (_) {}
+      }
+      syncUI();
+    }
+
+    function pop(x, y, color, n = 9) {
+      for (let i = 0; i < n; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const v = 45 + Math.random() * 135;
+        particles.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, t: 0, life: .35 + Math.random() * .35, color });
+      }
+    }
+
+    function keepBallSpeed(speedTarget) {
+      const n = normalize(ball.vx, ball.vy);
+      ball.vx = n.x * speedTarget;
+      ball.vy = n.y * speedTarget;
+    }
+
+    function resolveWallCollision() {
+      let bounced = false;
+      if (ball.x - ball.r < 8) {
+        ball.x = 8 + ball.r;
+        const out = reflect(ball.vx, ball.vy, 1, 0);
+        ball.vx = out.vx; ball.vy = out.vy;
+        bounced = true;
+      }
+      if (ball.x + ball.r > W - 8) {
+        ball.x = W - 8 - ball.r;
+        const out = reflect(ball.vx, ball.vy, -1, 0);
+        ball.vx = out.vx; ball.vy = out.vy;
+        bounced = true;
+      }
+      if (ball.y - ball.r < 8) {
+        ball.y = 8 + ball.r;
+        const out = reflect(ball.vx, ball.vy, 0, 1);
+        ball.vx = out.vx; ball.vy = out.vy;
+        bounced = true;
+      }
+      if (bounced) keepBallSpeed(Math.min(Math.hypot(ball.vx, ball.vy), 720));
+    }
+
+    // 点から楕円への最近接点。楕円の厳密な境界上の点を求める。
+    // 楕円外の点ではラグランジュ乗数の単調方程式を二分探索する。
+    function closestEllipsePoint(dx, dy, a, b) {
+      const aa = a * a, bb = b * b;
+      const q = dx * dx / aa + dy * dy / bb;
+      if (q >= 1) {
+        const f = t => (a * dx / (aa + t)) ** 2 + (b * dy / (bb + t)) ** 2 - 1;
+        let low = 0, high = 1;
+        while (f(high) > 0) high *= 2;
+        for (let i = 0; i < 42; i++) {
+          const mid = (low + high) / 2;
+          if (f(mid) > 0) low = mid;
+          else high = mid;
+        }
+        const t = (low + high) / 2;
+        return { x: aa * dx / (aa + t), y: bb * dy / (bb + t), inside: false };
+      }
+
+      // 中心が内側に進入した場合も、上半分の最短距離点へ押し戻せるようにする。
+      // 64サンプルで候補を選び、局所的に黄金分割探索で絞る。
+      const dist2 = t => {
+        const x = a * Math.cos(t), y = -b * Math.sin(t);
+        return (x - dx) ** 2 + (y - dy) ** 2;
+      };
+      let best = 0, minimum = Infinity;
+      for (let i = 0; i <= 64; i++) {
+        const t = Math.PI * i / 64;
+        const d = dist2(t);
+        if (d < minimum) { minimum = d; best = t; }
+      }
+      let lo = Math.max(0, best - Math.PI / 64);
+      let hi = Math.min(Math.PI, best + Math.PI / 64);
+      const phi = (Math.sqrt(5) - 1) / 2;
+      for (let i = 0; i < 32; i++) {
+        const m1 = hi - phi * (hi - lo);
+        const m2 = lo + phi * (hi - lo);
+        if (dist2(m1) < dist2(m2)) hi = m2;
+        else lo = m1;
+      }

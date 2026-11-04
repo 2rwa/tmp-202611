@@ -1,0 +1,22 @@
+    function position(e){const r=canvas.getBoundingClientRect();pointerX=clamp((e.clientX-r.left)/r.width*W,0,W);}
+    canvas.addEventListener('pointermove',e=>{position(e);});
+    canvas.addEventListener('pointerdown',e=>{position(e);try{canvas.setPointerCapture(e.pointerId);}catch(_){}if(state!=='playing')start();});
+    canvas.addEventListener('pointerleave',e=>{if(e.pointerType==='mouse')pointerX=null;});
+    window.addEventListener('keydown',e=>{
+      if(['ArrowLeft','ArrowRight','Space','KeyA','KeyD','KeyP','KeyR'].includes(e.code))e.preventDefault();
+      if(e.code==='ArrowLeft'||e.code==='KeyA'){left=true;pointerX=null;}
+      if(e.code==='ArrowRight'||e.code==='KeyD'){right=true;pointerX=null;}
+      if(e.code==='Space'){if(state==='playing')togglePause();else start();}
+      if(e.code==='KeyP')togglePause();
+      if(e.code==='KeyR')restart();
+    });
+    window.addEventListener('keyup',e=>{if(e.code==='ArrowLeft'||e.code==='KeyA')left=false;if(e.code==='ArrowRight'||e.code==='KeyD')right=false;});
+    window.addEventListener('blur',()=>{left=false;right=false;if(state==='playing'){state='paused';syncUI();}});
+    els.start.addEventListener('click',()=>{if(state==='playing')return;start();});
+    els.pause.addEventListener('click',togglePause);
+    els.reset.addEventListener('click',restart);
+    restart();requestAnimationFrame(frame);
+  })();
+  </script>
+</body>
+</html>

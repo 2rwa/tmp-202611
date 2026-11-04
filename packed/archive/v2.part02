@@ -1,0 +1,189 @@
+      return { nx: 0, ny: 1, px: ball.x, py: b.y + b.h, penetration: ball.r + 0.4 };
+    }
+
+    function getCircleBrickCollision(b) {
+      const cx = b.x + b.w / 2;
+      const cy = b.y + b.h / 2;
+      const rr = Math.min(b.w, b.h) * 0.48;
+      const dx = ball.x - cx;
+      const dy = ball.y - cy;
+      const dist = Math.hypot(dx, dy);
+      if (dist > rr + ball.r) return null;
+      const n = dist > 1e-6 ? { x: dx / dist, y: dy / dist } : { x: 0, y: -1 };
+      return { nx: n.x, ny: n.y, px: cx + n.x * rr, py: cy + n.y * rr, penetration: rr + ball.r - dist + 0.2 };
+    }
+
+    function getTriangleBrickCollision(b) {
+      const pad = 3;
+      const a = { x: b.x + b.w / 2, y: b.y + pad };
+      const c = { x: b.x + pad, y: b.y + b.h - pad };
+      const d = { x: b.x + b.w - pad, y: b.y + b.h - pad };
+      const edges = [[a, d], [d, c], [c, a]];
+      let bestHit = null;
+      for (const [p1, p2] of edges) {
+        const cp = closestPointOnSegment(ball.x, ball.y, p1.x, p1.y, p2.x, p2.y);
+        const dx = ball.x - cp.x;
+        const dy = ball.y - cp.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist <= ball.r + 0.1) {
+          let n;
+          if (dist > 1e-6) n = { x: dx / dist, y: dy / dist };
+          else {
+            const ex = p2.x - p1.x;
+            const ey = p2.y - p1.y;
+            n = normalize(-ey, ex);
+            const midx = (p1.x + p2.x) * 0.5;
+            const midy = (p1.y + p2.y) * 0.5;
+            const toCenter = { x: (b.x + b.w / 2) - midx, y: (b.y + b.h / 2) - midy };
+            if (n.x * toCenter.x + n.y * toCenter.y > 0) n = { x: -n.x, y: -n.y };
+          }
+          const penetration = ball.r - dist + 0.2;
+          if (!bestHit || penetration > bestHit.penetration) bestHit = { nx: n.x, ny: n.y, px: cp.x, py: cp.y, penetration };
+        }
+      }
+      if (bestHit) return bestHit;
+
+      if (pointInTriangle(ball.x, ball.y, a, d, c)) {
+        let best = null;
+        for (const [p1, p2] of edges) {
+          const cp = closestPointOnSegment(ball.x, ball.y, p1.x, p1.y, p2.x, p2.y);
+          const dx = ball.x - cp.x;
+          const dy = ball.y - cp.y;
+          const dist = Math.hypot(dx, dy) || 1;
+          const penetration = ball.r + dist;
+          const n = normalize(dx, dy);
+          if (!best || dist < best.dist) best = { dist, nx: n.x, ny: n.y, px: cp.x, py: cp.y, penetration: penetration * 0.5 };
+        }
+        return best;
+      }
+      return null;
+    }
+
+    function getBrickCollision(b) {
+      if (b.shape === 'circle') return getCircleBrickCollision(b);
+      if (b.shape === 'triangle') return getTriangleBrickCollision(b);
+      return getRectCollision(b);
+    }
+
+    function collideBricks() {
+      for (let i = bricks.length - 1; i >= 0; i--) {
+        const b = bricks[i];
+        const hit = getBrickCollision(b);
+        if (!hit) continue;
+
+        const out = reflect(ball.vx, ball.vy, hit.nx, hit.ny);
+        ball.vx = out.vx;
+        ball.vy = out.vy;
+        ball.x += hit.nx * hit.penetration;
+        ball.y += hit.ny * hit.penetration;
+        keepBallSpeed(Math.min(Math.hypot(ball.vx, ball.vy) * 1.006, 720));
+
+        b.hp--;
+        addScore(b.hp === 0 ? 10 * level : 5 * level);
+        pop(hit.px, hit.py, b.color, b.hp === 0 ? 11 : 5);
+        if (b.hp <= 0) bricks.splice(i, 1);
+        return true;
+      }
+      return false;
+    }
+
+    function update(dt) {
+      if (pointerX !== null) {
+        paddle.x += (clamp(pointerX - paddle.w / 2, 5, W - paddle.w - 5) - paddle.x) * Math.min(1, dt * 18);
+      } else {
+        const dir = (right ? 1 : 0) - (left ? 1 : 0);
+        paddle.x = clamp(paddle.x + dir * 580 * dt, 5, W - paddle.w - 5);
+      }
+
+      particles = particles.filter(p => p.t < p.life);
+      for (const p of particles) {
+        p.t += dt;
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.vy += 160 * dt;
+      }
+
+      if (state !== 'playing') {
+        if (state === 'ready') {
+          ball.x = paddle.x + paddle.w / 2;
+          ball.y = paddle.y - ball.r - 6;
+        }
+        return;
+      }
+
+      const steps = Math.max(1, Math.ceil(dt / (1 / 180)));
+      const s = dt / steps;
+      for (let j = 0; j < steps; j++) {
+        const prevX = ball.x;
+        const prevY = ball.y;
+        ball.x += ball.vx * s;
+        ball.y += ball.vy * s;
+
+        resolveWallCollision();
+        collideBallPaddle(prevX, prevY);
+        collideBricks();
+
+        if (ball.y - ball.r > H) {
+          lives--;
+          pop(ball.x, H - 10, '#ff849b', 20);
+          if (lives <= 0) state = 'gameover';
+          else {
+            state = 'ready';
+            resetBall();
+          }
+          syncUI();
+          break;
+        }
+        if (bricks.length === 0) {
+          addScore(100 * level);
+          nextLevel();
+          break;
+        }
+      }
+
+      trails.push({ x: ball.x, y: ball.y, t: 0 });
+      if (trails.length > 12) trails.shift();
+      for (const t of trails) t.t += dt;
+    }
+
+    function roundRectPath(x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.roundRect(x, y, w, h, r);
+    }
+
+    function ellipsePath(x, y, w, h) {
+      ctx.beginPath();
+      ctx.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
+    }
+
+    function trianglePath(x, y, w, h) {
+      const pad = 3;
+      ctx.beginPath();
+      ctx.moveTo(x + w / 2, y + pad);
+      ctx.lineTo(x + w - pad, y + h - pad);
+      ctx.lineTo(x + pad, y + h - pad);
+      ctx.closePath();
+    }
+
+    function drawBrick(b) {
+      ctx.save();
+      ctx.shadowColor = b.color;
+      ctx.shadowBlur = 13;
+      ctx.fillStyle = b.color;
+      if (b.shape === 'circle') ellipsePath(b.x + 1, b.y + 2, b.w - 2, b.h - 4);
+      else if (b.shape === 'triangle') trianglePath(b.x, b.y, b.w, b.h);
+      else roundRectPath(b.x, b.y, b.w, b.h, 5);
+      ctx.fill();
+
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#ffffff48';
+      if (b.shape === 'circle') ellipsePath(b.x + 8, b.y + 6, b.w * 0.35, b.h * 0.25);
+      else if (b.shape === 'triangle') {
+        ctx.beginPath();
+        ctx.moveTo(b.x + b.w * 0.52, b.y + 6);
+        ctx.lineTo(b.x + b.w * 0.72, b.y + b.h * 0.48);
+        ctx.lineTo(b.x + b.w * 0.42, b.y + b.h * 0.48);
+        ctx.closePath();
+      } else {
+        roundRectPath(b.x + 4, b.y + 3, b.w - 8, 4, 2);
+      }
