@@ -12,7 +12,7 @@ Temporary GitHub Pages playground and archive for five successive iterations of 
 
 - [v5 — ORBIT BREAK circular arena, drifting targets and one-sided paddle (latest)](https://2rwa.github.io/tmp-202611/games/v5-orbit.html)
 
-The first four versions are the original conversation-generated standalone HTML snapshot. Old versions deliberately retain their historical collision and speed quirks; v4 is the recommended playable version.
+The first four versions are the original conversation-generated standalone HTML snapshot. Old versions deliberately retain their historical collision and speed quirks; v5 is the latest gameplay experiment.
 
 ## Build and test
 
@@ -39,9 +39,9 @@ The archived HTML pages are self-contained (no packages or network dependencies 
 - Field is a circular specular reflector; ball speed remains constant per level.
 - Targets drift/rotate and bounce before reaching the paddle lane; small circles, triangles and squares can be destroyed.
 - Rotate the curved paddle around the circular boundary via pointer, touch, or Left/Right / A/D keys.
-- Contact on the **inner/front** surface reflects the ball; returning from the outer ring and touching the **outer/rear** surface loses one life. Three back-side hits end the game.
+- Both **front and rear** paddle contacts reflect and fully recharge the ball (100%). Neither side damages the player. Each successful powered target strike costs 34 energy (three powered hits per charge). An unpowered target contact still reflects the ball, cannot damage the object, and costs one LIFE. Three such collisions cause GAME OVER. A brief hit cooldown prevents one overlap from draining multiple lives.
 - Destroy every target to advance a level. No random reflection angles; reproducible seeded target layouts.
-- `orbit/physics.js` is the stand-alone deterministic gameplay model shared by browser and Node tests.
+- `orbit/physics.js` is the stand-alone deterministic gameplay model shared by browser and Node tests. Energy and LIFE are separate from fixed per-level ball speed.
 - `orbit/render.js`, `orbit/game.js`, `orbit/style.css` implement Canvas visualization, controls and HUD.
 - `tests/orbit.test.cjs` validates actual multi-step physics and full game transitions. `tests/orbit.browser.cjs` exercises the production interface in headless Chromium and uploads screenshots via Actions.
 - Pages deployment tests **both** engine gameplay and actual browser input/rendering before publishing.

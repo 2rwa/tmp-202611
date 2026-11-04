@@ -30,10 +30,11 @@ check('normal reflection and oblique angle are calculated, not randomized',()=>{
 check('paddle inner/front face reflects inward at all orientations and sane offsets',()=>{
  const s=F.speedAt(1),inner=F.PADDLE_R-F.PADDLE_THICK/2-F.BALL_R;
  for(let i=0;i<24;i++){
-  const a=i*F.TAU/24,e=make();e.setPaddleAngle(a);
+  const a=i*F.TAU/24,e=make();e.setPaddleAngle(a);e.world.energy=0;
   const theta=a+(i%3-1)*.11,p=radial(theta,inner-4),v=outbound(theta,s);
   e.injectBall(p.x,p.y,v.vx,v.vy);e.tick(.05);
   assert.equal(e.world.frontHits,1,'front hit '+i);
+  assert.equal(e.world.energy,F.ENERGY_MAX,'front must recharge '+i);
   assert.equal(e.world.lives,3);
   close(magnitude(e.world.ball),s,.01);
   const pos=e.world.ball;assert.ok(Math.hypot(pos.x-F.C.x,pos.y-F.C.y)<inner+1);
@@ -46,29 +47,67 @@ check('missed front face cannot kill the ball while the wall reflects it',()=>{
  assert.equal(e.world.wallHits,1);
  assert.equal(e.world.rearHits,0);
 });
-check('paddle rear face deducts exactly one life on inward impact',()=>{
+check('paddle rear face now reflects, fully charges and never deducts LIFE',()=>{
  const e=make(),a=Math.PI/2,p=radial(a,F.PADDLE_R+F.PADDLE_THICK/2+F.BALL_R+4);
- e.injectBall(p.x,p.y,0,-e.speed());e.tick(.05);
- assert.equal(e.world.rearHits,1);assert.equal(e.world.lives,2);
- assert.equal(e.world.state,'ready');
+ e.world.energy=0;
+ e.injectBall(p.x,p.y,0,-e.speed());e.tick(.02);
+ assert.equal(e.world.rearHits,1);assert.equal(e.world.lives,3);
+ assert.equal(e.world.state,'playing');assert.equal(e.world.energy,F.ENERGY_MAX);
+ assert.ok(e.world.ball.vy>0,'rear contact must reflect outward');
+ close(magnitude(e.world.ball),e.speed());
 });
-check('three real rear collisions cause GAME OVER and restart is playable',()=>{
- const e=make(),a=Math.PI/2;
- for(let i=0;i<3;i++){
-  const p=radial(a,F.PADDLE_R+F.PADDLE_THICK/2+F.BALL_R+4);
-  e.injectBall(p.x,p.y,0,-e.speed());e.tick(.05);
-  assert.equal(e.world.lives,2-i);
-  assert.equal(e.world.rearHits,i+1);
-  assert.equal(e.world.state,i===2?'gameover':'ready');
-  if(i<2)e.start();
+check('rear collision outside paddle angular span causes neither charge nor damage',()=>{
+ const e=make(),p=radial(0,F.PADDLE_R+F.PADDLE_THICK/2+F.BALL_R+4);
+ e.world.energy=0;e.injectBall(p.x,p.y,-e.speed(),0);e.tick(.05);
+ assert.equal(e.world.lives,3);assert.equal(e.world.rearHits,0);
+ assert.equal(e.world.energy,0);
+});
+check('three powered target hits exhaust energy and require paddle recharge',()=>{
+ const e=make(),s=e.speed(),t={id:10,kind:'circle',x:400,y:300,r:13,vx:0,vy:0,rotation:0,spin:0,hp:1},
+ far={id:11,kind:'circle',x:530,y:320,r:12,vx:0,vy:0,rotation:0,spin:0,hp:1};
+ for(let k=1;k<=3;k++){
+  e.world.targets=[{...t,id:k}, {...far}];
+  e.injectBall(400,270,0,s);e.tick(.05);
+  assert.equal(e.world.chargedHits,k);
+  assert.equal(e.world.destroyed,k);
+  assert.equal(e.world.lives,3);
+  assert.equal(e.world.energy,Math.max(0,100-F.ENERGY_COST*k));
  }
+ assert.equal(e.world.energy,0);
+ const previousScore=e.world.score;
+ e.world.targets=[{...t}, {...far}];
+ e.injectBall(400,270,0,s);e.tick(.05);
+ assert.equal(e.world.energy,0);
+ assert.equal(e.world.lives,2);
+ assert.equal(e.world.destroyed,3,'empty ball must never destroy targets');
+ assert.equal(e.world.targets[0].hp,1);
+ assert.equal(e.world.score,previousScore,'empty collision must award no score');
+ assert.ok(e.world.ball.vy<0,'empty collision still reflects');
+ assert.equal(e.world.state,'playing','empty ball continues moving after losing a LIFE');
+ e.setPaddleAngle(Math.PI/2);
+ e.injectBall(400,488,0,s);e.tick(.05);
+ assert.equal(e.world.energy,100,'paddle should refill empty ball');
+ e.injectBall(400,270,0,s);e.tick(.05);
+ assert.equal(e.world.destroyed,4,'recharged ball can damage again');
+ assert.equal(e.world.energy,100-F.ENERGY_COST);
+ assert.equal(e.world.lives,2);
+});
+check('empty collision has damage grace and three separated hits end game',()=>{
+ const e=make(),s=e.speed();
+ const t={id:20,kind:'circle',x:400,y:300,r:13,vx:0,vy:0,rotation:0,spin:0,hp:2};
+ e.world.targets=[t];e.world.energy=0;
+ function hit(){e.injectBall(400,270,0,s);e.tick(.05);}
+ hit();assert.equal(e.world.lives,2);assert.equal(e.world.unsafeHits,1);
+ hit();assert.equal(e.world.lives,2,'cooldown prevents double penalty');
+ assert.equal(e.world.targets[0].hp,2);
+ e.world.damageCooldown=0;hit();
+ assert.equal(e.world.lives,1);assert.equal(e.world.state,'playing');
+ e.world.damageCooldown=0;hit();
+ assert.equal(e.world.lives,0);assert.equal(e.world.state,'gameover');
+ assert.equal(e.world.targets[0].hp,2);
  assert.ok(e.world.events.some(x=>x.type==='gameover'));
  e.start();assert.equal(e.world.state,'playing');assert.equal(e.world.lives,3);
-});
-check('rear collision outside paddle angular span is safe',()=>{
- const e=make(),p=radial(0,F.PADDLE_R+F.PADDLE_THICK/2+F.BALL_R+4);
- e.injectBall(p.x,p.y,-e.speed(),0);e.tick(.05);
- assert.equal(e.world.lives,3);assert.equal(e.world.rearHits,0);
+ assert.equal(e.world.energy,100);
 });
 check('drifting targets remain within their assigned inner zone',()=>{
  const e=make();const t=e.world.targets[0],initial={x:t.x,y:t.y};
@@ -81,11 +120,13 @@ check('target circle collision really destroys object and scores points',()=>{
  e.injectBall(F.C.x,F.C.y-30,0,e.speed());e.tick(.05);
  assert.equal(e.world.destroyed,1);assert.equal(e.world.targets.length,0);
  assert.equal(e.world.state,'levelclear');assert.ok(e.world.score>=120);
+ assert.equal(e.world.energy,100-F.ENERGY_COST);
 });
 check('level clear progresses to a more crowded, faster stage',()=>{
  const e=make();e.clearTargets();e.start();
  assert.equal(e.world.level,2);assert.equal(e.world.state,'playing');
  assert.equal(e.world.targets.length,19);close(magnitude(e.world.ball),F.speedAt(2));
+ assert.equal(e.world.energy,F.ENERGY_MAX);
 });
 check('playable deterministic simulation: speed bounded, target hits and proper transitions',()=>{
  const e=make();const s=e.speed();
@@ -101,6 +142,7 @@ check('playable deterministic simulation: speed bounded, target hits and proper 
   assert.ok(Number.isFinite(b.x)&&Number.isFinite(b.y));
   assert.ok(Math.hypot(b.x-F.C.x,b.y-F.C.y)<F.ARENA+1,'ball escaped circle');
   assert.ok(maxSpeed<=Math.max(s,e.speed())+.01,'speed jumped');
+  assert.ok(e.world.energy>=0&&e.world.energy<=F.ENERGY_MAX);
  }
  console.log('SIMULATION score='+e.world.score+' destroyed='+e.world.destroyed+' wallHits='+wall+' frontHits='+e.world.frontHits+' rearHits='+e.world.rearHits+' state='+e.world.state);
  assert.ok(e.world.frontHits>=1,'tracking controller should interact with the paddle');

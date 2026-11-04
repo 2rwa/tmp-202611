@@ -7,6 +7,7 @@
   const TAU=Math.PI*2;
   const C={x:400,y:300};
   const ARENA=242,PADDLE_R=210,PADDLE_THICK=19,PADDLE_HALF=.275,BALL_R=7;
+  const ENERGY_MAX=100,ENERGY_COST=34,HIT_GRACE=.55;
   const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
   const norm=(x,y)=>{const l=Math.hypot(x,y)||1;return{x:x/l,y:y/l};};
   const angleDiff=(a,b)=>Math.atan2(Math.sin(a-b),Math.cos(a-b));
@@ -79,6 +80,7 @@
   function createGame(seed=1205){
     const g={
       seed,level:1,score:0,lives:3,state:'ready',elapsed:0,wallHits:0,frontHits:0,rearHits:0,
+      energy:ENERGY_MAX,damageCooldown:0,unsafeHits:0,chargedHits:0,
       destroyed:0,paddleAngle:Math.PI/2,paddleOmega:0,events:[],targets:[],trail:[],
       ball:{x:400,y:458,vx:0,vy:0,r:BALL_R}
     };
@@ -87,6 +89,7 @@
     function placeBall(){
       const a=g.paddleAngle,rad=PADDLE_R-42;
       g.ball.x=C.x+Math.cos(a)*rad;g.ball.y=C.y+Math.sin(a)*rad;
+      g.energy=ENERGY_MAX;g.damageCooldown=0;
       const theta=a+.23;
       g.ball.vx=Math.cos(theta)*currentSpeed();g.ball.vy=Math.sin(theta)*currentSpeed();
       g.trail=[];
@@ -99,6 +102,7 @@
     function reset(){
       g.level=1;g.score=0;g.lives=3;g.state='ready';g.elapsed=0;
       g.wallHits=0;g.frontHits=0;g.rearHits=0;g.destroyed=0;
+      g.unsafeHits=0;g.chargedHits=0;
       g.paddleAngle=Math.PI/2;g.paddleOmega=0;g.events=[];newLevel();
       return g;
     }
@@ -116,10 +120,11 @@
       if(g.state==='ready')placeBall();
     }
     function loseLife(){
-      if(g.state!=='playing')return;
-      g.lives--;g.rearHits++;emit('rear-hit',{lives:g.lives});
+      if(g.state!=='playing'||g.damageCooldown>0)return false;
+      g.lives--;g.unsafeHits++;g.damageCooldown=HIT_GRACE;
+      emit('empty-hit',{lives:g.lives});
       if(g.lives<=0){g.state='gameover';emit('gameover',{score:g.score});}
-      else {g.state='ready';placeBall();}
+      return true;
     }
     function normalizeBall(){
       const n=norm(g.ball.vx,g.ball.vy),s=currentSpeed();
@@ -146,7 +151,7 @@
       const outer=PADDLE_R+PADDLE_THICK/2+b.r;
       const prevR=Math.hypot(px-C.x,py-C.y);
       const radialVelocity=b.vx*n.x+b.vy*n.y;
-      // The paddle has two faces: inner (reflecting) and outer (dangerous).
+      // Both sides bounce and fully charge the ball, but neither causes damage.
       if(radialVelocity>0&&prevR<inner+.8&&dist>=inner){
         const v=reflect(b.vx,b.vy,n.x,n.y);
         b.vx=v.x;b.vy=v.y;
@@ -156,11 +161,15 @@
         b.vx+=tangent.x*steer;b.vy+=tangent.y*steer;
         normalizeBall();
         b.x=C.x+n.x*(inner-.45);b.y=C.y+n.y*(inner-.45);
-        g.frontHits++;emit('front-hit',{x:b.x,y:b.y});
+        g.energy=ENERGY_MAX;g.frontHits++;emit('charge',{x:b.x,y:b.y,side:'front'});
         return true;
       }
       if(radialVelocity<0&&prevR>outer-.8&&dist<=outer){
-        loseLife();
+        const v=reflect(b.vx,b.vy,n.x,n.y);b.vx=v.x;b.vy=v.y;
+        normalizeBall();
+        b.x=C.x+n.x*(outer+.45);b.y=C.y+n.y*(outer+.45);
+        g.energy=ENERGY_MAX;g.rearHits++;
+        emit('charge',{x:b.x,y:b.y,side:'rear'});
         return true;
       }
       return false;
@@ -187,11 +196,17 @@
         const v=reflect(rvx,rvy,hit.nx,hit.ny);
         b.vx=v.x+t.vx;b.vy=v.y+t.vy;normalizeBall();
         b.x+=hit.nx*hit.depth;b.y+=hit.ny*hit.depth;
-        t.hp--;g.score+=t.hp===0?20*g.level:8*g.level;
-        emit('hit',{x:hit.px,y:hit.py,kind:t.kind,killed:t.hp===0});
-        if(t.hp<=0){g.targets.splice(i,1);g.destroyed++;}
-        if(g.targets.length===0){
-          g.score+=100*g.level;g.state='levelclear';emit('clear',{level:g.level});
+        if(g.energy===0){
+          loseLife();
+          emit('empty-bounce',{x:hit.px,y:hit.py,kind:t.kind});
+        }else{
+          g.energy=Math.max(0,g.energy-ENERGY_COST);g.chargedHits++;
+          t.hp--;g.score+=t.hp===0?20*g.level:8*g.level;
+          emit('hit',{x:hit.px,y:hit.py,kind:t.kind,killed:t.hp===0});
+          if(t.hp<=0){g.targets.splice(i,1);g.destroyed++;}
+          if(g.targets.length===0){
+            g.score+=100*g.level;g.state='levelclear';emit('clear',{level:g.level});
+          }
         }
         return true;
       }
@@ -202,7 +217,7 @@
       const total=clamp(dt,0,.05),steps=Math.max(1,Math.ceil(total/(1/240)));
       const step=total/steps;
       for(let i=0;i<steps&&g.state==='playing';i++){
-        g.elapsed+=step;updateTargets(step);
+        g.elapsed+=step;g.damageCooldown=Math.max(0,g.damageCooldown-step);updateTargets(step);
         const b=g.ball,px=b.x,py=b.y;
         b.x+=b.vx*step;b.y+=b.vy*step;
         if(paddleContact(px,py))continue;
@@ -221,5 +236,6 @@
       speed:currentSpeed};
   }
   return Object.freeze({C,ARENA,PADDLE_R,PADDLE_THICK,PADDLE_HALF,BALL_R,TAU,
-    clamp,norm,angleDiff,reflect,randGen,speedAt,targetVertices,targetContact,spawnTargets,createGame});
+    clamp,norm,angleDiff,reflect,randGen,speedAt,targetVertices,targetContact,spawnTargets,createGame,
+    ENERGY_MAX,ENERGY_COST,HIT_GRACE});
 });

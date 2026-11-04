@@ -2,13 +2,14 @@
 'use strict';
 const F=root.OrbitPhysics,R=root.OrbitRender;
 const canvas=document.getElementById('arena'),renderer=R.createRenderer(canvas);
-const ui={score:document.getElementById('score'),best:document.getElementById('best'),level:document.getElementById('level'),lives:document.getElementById('lives'),remaining:document.getElementById('remaining'),status:document.getElementById('status'),start:document.getElementById('start'),pause:document.getElementById('pause'),reset:document.getElementById('reset')};
+const ui={score:document.getElementById('score'),best:document.getElementById('best'),level:document.getElementById('level'),lives:document.getElementById('lives'),remaining:document.getElementById('remaining'),status:document.getElementById('status'),energy:document.getElementById('energy'),energyFill:document.getElementById('energy-fill'),start:document.getElementById('start'),pause:document.getElementById('pause'),reset:document.getElementById('reset')};
 const engine=F.createGame(20261104),world=engine.world;
 let best=0,prev=0,left=false,right=false,pointer=null,pointerHeld=false;
 try{best=Number(localStorage.getItem('orbitBreakerBest')||0)}catch(_){}
 function snapshot(){
  return{state:world.state,score:world.score,best,level:world.level,lives:world.lives,
   remaining:world.targets.length,frontHits:world.frontHits,rearHits:world.rearHits,wallHits:world.wallHits,
+  energy:world.energy,chargedHits:world.chargedHits,unsafeHits:world.unsafeHits,damageCooldown:world.damageCooldown,
   speed:Math.hypot(world.ball.vx,world.ball.vy),expectedSpeed:engine.speed(),paddleAngle:world.paddleAngle,
   ball:{...world.ball},elapsed:world.elapsed,events:world.events.slice()};
 }
@@ -19,6 +20,10 @@ function updateHud(){
  ui.level.textContent=world.level;
  ui.lives.textContent='♥'.repeat(world.lives)||'—';
  ui.remaining.textContent=world.targets.length;
+ ui.energy.textContent=world.energy+'%';
+ ui.energyFill.style.width=world.energy+'%';
+ ui.energyFill.style.background=world.energy===0?'#ff7b8a':world.energy<=34?'#f3bf6d':'#6cebdc';
+ ui.energyFill.parentElement.setAttribute('aria-valuenow',String(world.energy));
  ui.status.textContent=world.state==='playing'?'PLAYING':world.state==='ready'?'READY':world.state==='paused'?'PAUSED':world.state==='levelclear'?'CLEAR':'GAME OVER';
  ui.start.textContent=world.state==='playing'?'プレイ中':world.state==='levelclear'?'次のステージ':world.state==='gameover'?'もう一度':world.state==='paused'?'再開':'スタート';
  ui.pause.textContent=world.state==='paused'?'再開':'一時停止';
@@ -88,6 +93,9 @@ if(root.location&&new URLSearchParams(root.location.search).has('test')){
   injectBall:(x,y,vx,vy)=>{engine.injectBall(x,y,vx,vy);renderer.draw(world);},
   clearTargets:()=>{engine.clearTargets();updateHud();renderer.draw(world);},
   tick:dt=>{engine.tick(dt);updateHud();renderer.draw(world);},
+  setEnergy:v=>{world.energy=F.clamp(Math.round(v),0,F.ENERGY_MAX);updateHud();renderer.draw(world);},
+  setTargets:targets=>{world.targets=targets.map(t=>({...t}));updateHud();renderer.draw(world);},
+  skipCooldown:()=>{world.damageCooldown=0;},
   loseLife:()=>{engine.loseLife();updateHud();renderer.draw(world);}
  });
 }

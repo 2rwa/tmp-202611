@@ -56,7 +56,7 @@ function createRenderer(canvas){
   ctx.shadowBlur=0;
   ctx.strokeStyle='#ccfffb';ctx.lineWidth=5;
   ctx.beginPath();ctx.arc(C.x,C.y,PADDLE_R-PADDLE_THICK/2+1,from+.012,to-.012);ctx.stroke();
-  ctx.strokeStyle='#ff718d';ctx.lineWidth=4;
+  ctx.strokeStyle='#9feaff';ctx.lineWidth=4;
   ctx.beginPath();ctx.arc(C.x,C.y,PADDLE_R+PADDLE_THICK/2-1,from+.016,to-.016);ctx.stroke();
   ctx.fillStyle='#aaf6f3';
   for(const theta of [from,to]){circle(C.x+Math.cos(theta)*PADDLE_R,C.y+Math.sin(theta)*PADDLE_R,7);ctx.fill();}
@@ -64,18 +64,23 @@ function createRenderer(canvas){
  }
  function drawBall(w){
   const b=w.ball;
+  const charged=w.energy>0;
+  const glow=charged?(w.energy<=34?'#ffcb74':'#7dffef'):'#ff7189';
   for(let i=0;i<w.trail.length;i++){
    const p=w.trail[i],alpha=(i+1)/w.trail.length;
-   ctx.fillStyle='rgba(120,255,248,'+(alpha*.2)+')';
+   ctx.fillStyle=charged?'rgba(120,255,248,'+(alpha*.23)+')':'rgba(255,118,139,'+(alpha*.16)+')';
    circle(p.x,p.y,2+alpha*5);ctx.fill();
   }
-  ctx.save();ctx.shadowColor='#e4ffff';ctx.shadowBlur=25;ctx.fillStyle='#f5ffff';circle(b.x,b.y,b.r);ctx.fill();
-  ctx.shadowBlur=0;ctx.fillStyle='#85e8ff';circle(b.x-2,b.y-2,1.9);ctx.fill();ctx.restore();
+  ctx.save();ctx.shadowColor=glow;ctx.shadowBlur=charged?28:12;ctx.fillStyle=charged?'#f5ffff':'#586b88';
+  circle(b.x,b.y,b.r);ctx.fill();ctx.shadowBlur=0;
+  ctx.strokeStyle=glow;ctx.lineWidth=charged?2.5:1;circle(b.x,b.y,b.r+3);ctx.stroke();
+  if(charged){ctx.fillStyle='#eaffff';circle(b.x-2,b.y-2,1.9);ctx.fill();}
+  ctx.restore();
  }
  function overlay(w){
   if(w.state==='playing')return;
   ctx.save();const title=w.state==='gameover'?'GAME OVER':w.state==='paused'?'PAUSED':w.state==='levelclear'?'ARENA CLEAR':'READY?';
-  const hint=w.state==='gameover'?'3回の背面ヒットで終了':w.state==='levelclear'?'次のステージへ':w.state==='paused'?'スペースで再開':'クリック / スペースでスタート';
+  const hint=w.state==='gameover'?'無充電でオブジェクトに3回被弾':w.state==='levelclear'?'次のステージへ':w.state==='paused'?'スペースで再開':'クリック / スペースでスタート';
   ctx.fillStyle='#071326b9';ctx.fillRect(250,245,300,116);
   ctx.textAlign='center';ctx.fillStyle='#f5ffff';ctx.font='800 36px system-ui';ctx.fillText(title,400,287);
   ctx.fillStyle='#8ff5ee';ctx.font='600 15px system-ui';ctx.fillText(hint,400,325);

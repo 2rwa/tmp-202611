@@ -57,39 +57,91 @@ const {chromium}=require('playwright');
  await page.keyboard.press('Space');
  assert.equal((await page.evaluate(()=>window.__orbitTest.inspect())).state,'playing');
  console.log('PASS real start, keyboard rotation, pause and resume');
- const result=await page.evaluate(()=>{
+ const front=await page.evaluate(()=>{
    const api=window.__orbitTest;
-   api.setAngle(Math.PI/2);
+   api.setAngle(Math.PI/2);api.setEnergy(0);
    const prev=api.inspect().frontHits,speed=api.inspect().expectedSpeed;
-   api.injectBall(400,300+188,0,speed);
-   api.tick(.04);
+   api.injectBall(400,488,0,speed);api.tick(.04);
    const a=api.inspect();
-   return {prev,front:a.frontHits,state:a.state,speed:a.speed,expected:a.expectedSpeed};
+   return {prev,front:a.frontHits,state:a.state,lives:a.lives,energy:a.energy,speed:a.speed,expected:a.expectedSpeed};
  });
- assert.equal(result.front,result.prev+1,'front should reflect');
- assert.equal(result.state,'playing');
- assert.ok(Math.abs(result.speed-result.expected)<.002);
- console.log('PASS front collision reflects without speed gain in real browser');
- for(let i=0;i<3;i++){
-  const r=await page.evaluate(()=>{
-    const api=window.__orbitTest;
-    if(api.inspect().state!=='playing')api.play();
-    api.setAngle(Math.PI/2);
-    const speed=api.inspect().expectedSpeed;
-    api.injectBall(400,531,0,-speed);
-    api.tick(.04);
-    return api.inspect();
-  });
-  assert.equal(r.rearHits,i+1);
-  assert.equal(r.lives,2-i);
-  assert.equal(r.state,i===2?'gameover':'ready');
+ assert.equal(front.front,front.prev+1,'front should reflect and recharge');
+ assert.equal(front.energy,100);
+ assert.equal(front.lives,3);
+ assert.equal(front.state,'playing');
+ assert.ok(Math.abs(front.speed-front.expected)<.002);
+ assert.equal(await page.locator('#energy').innerText(),'100%');
+ console.log('PASS inner paddle collision recharges, preserves lives and speed');
+ const rear=await page.evaluate(()=>{
+   const api=window.__orbitTest;
+   api.setAngle(Math.PI/2);api.setEnergy(0);
+   const before=api.inspect().rearHits,speed=api.inspect().expectedSpeed;
+   api.injectBall(400,531,0,-speed);api.tick(.02);
+   const a=api.inspect();
+   return {before,rearHits:a.rearHits,energy:a.energy,lives:a.lives,vy:a.ball.vy,state:a.state};
+ });
+ assert.equal(rear.rearHits,rear.before+1);
+ assert.equal(rear.lives,3,'backside collision must be harmless');
+ assert.equal(rear.energy,100,'backside paddle contact should recharge too');
+ assert.ok(rear.vy>0,'backside bounce should reflect outward');
+ console.log('PASS backside paddle collision reflects and charges without damage');
+ const charged=await page.evaluate(()=>{
+   const api=window.__orbitTest;
+   api.setTargets([
+     {id:10,kind:'circle',x:400,y:300,r:13,vx:0,vy:0,rotation:0,spin:0,hp:1},
+     {id:11,kind:'square',x:550,y:330,r:13,vx:0,vy:0,rotation:0,spin:0,hp:1}
+   ]);
+   api.setEnergy(100);
+   const before=api.inspect(),speed=before.expectedSpeed;
+   api.injectBall(400,270,0,speed);api.tick(.05);
+   const after=api.inspect();
+   return {before,after};
+ });
+ assert.equal(charged.after.energy,66,'one powered hit costs 34 energy');
+ assert.ok(charged.after.score>charged.before.score,'powered hit awards score');
+ assert.equal(charged.after.lives,3);
+ assert.equal(charged.after.remaining,1);
+ assert.equal(await page.locator('#energy').innerText(),'66%');
+ assert.equal(await page.locator('.energy-track').getAttribute('aria-valuenow'),'66');
+ await page.screenshot({path:'test-artifacts/orbit-energy.png'});
+ console.log('PASS charged target hit destroys object and drains visible energy meter');
+ const emptyTarget={id:20,kind:'circle',x:400,y:300,r:13,vx:0,vy:0,rotation:0,spin:0,hp:2};
+ const empty=await page.evaluate(target=>{
+   const api=window.__orbitTest;
+   api.setTargets([target]);
+   api.setEnergy(0);
+   const before=api.inspect(),speed=before.expectedSpeed;
+   api.injectBall(400,270,0,speed);api.tick(.05);
+   return {before,after:api.inspect()};
+ },emptyTarget);
+ assert.equal(empty.after.lives,2);
+ assert.equal(empty.after.state,'playing','empty collision should reflect and keep playing');
+ assert.ok(empty.after.ball.vy<0);
+ assert.equal(empty.after.energy,0);
+ assert.equal(empty.after.remaining,1,'uncharged hit must not destroy object');
+ assert.equal(empty.after.score,empty.before.score);
+ assert.equal(await page.locator('#energy').innerText(),'0%');
+ assert.equal(await page.locator('#lives').innerText(),'♥♥');
+ await page.screenshot({path:'test-artifacts/orbit-energy-empty.png'});
+ console.log('PASS empty ball reflects from object, costs one LIFE and does not damage target');
+ for(let i=0;i<2;i++){
+   const state=await page.evaluate(()=>{
+     const api=window.__orbitTest;
+     api.skipCooldown();
+     const speed=api.inspect().expectedSpeed;
+     api.injectBall(400,270,0,speed);api.tick(.05);
+     return api.inspect();
+   });
+   assert.equal(state.lives,1-i);
+   assert.equal(state.state,i===1?'gameover':'playing');
  }
  assert.equal(await page.locator('#status').innerText(),'GAME OVER');
  await page.screenshot({path:'test-artifacts/orbit-gameover.png'});
- console.log('PASS three backside collisions show real GAME OVER in HUD and canvas');
+ console.log('PASS three uncharged object collisions show GAME OVER; rear paddle causes no loss');
  await page.locator('#reset').click();
  assert.equal(await page.locator('#status').innerText(),'READY');
  assert.equal(await page.locator('#lives').innerText(),'♥♥♥');
+ assert.equal(await page.locator('#energy').innerText(),'100%');
  await page.locator('#start').click();
  await page.evaluate(()=>window.__orbitTest.clearTargets());
  assert.equal(await page.locator('#status').innerText(),'CLEAR');

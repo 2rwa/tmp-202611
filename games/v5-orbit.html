@@ -10,24 +10,26 @@
 <body>
 <main class="shell">
  <header>
-  <div><p class="eyebrow"><a href="../index.html">NEON BREAK LAB</a> / EXPERIMENT 05</p><h1>ORBIT <em>BREAK</em></h1><p class="subtitle">外周で反射、内側で破壊。背面からパドルに当たるとミス。</p></div>
+  <div><p class="eyebrow"><a href="../index.html">NEON BREAK LAB</a> / EXPERIMENT 05</p><h1>ORBIT <em>BREAK</em></h1><p class="subtitle">円壁で反射。パドルで球を充電し、無充電でオブジェクトに触れるとLIFE減少。</p></div>
   <div class="scores" aria-label="スコアと進行状況">
    <div class="score"><small>SCORE</small><strong id="score">0</strong></div>
    <div class="score"><small>BEST</small><strong id="best">0</strong></div>
    <div class="score"><small>STAGE</small><strong id="level">1</strong></div>
    <div class="score"><small>LIVES</small><strong id="lives">♥♥♥</strong></div>
+   <div class="score energy-score"><small>ENERGY</small><strong id="energy">100%</strong></div>
   </div>
  </header>
- <div class="arena-wrap"><canvas id="arena" width="800" height="600" role="img" aria-label="円形フィールドを漂う図形をボールで壊すゲーム。パドルの内側は反射、背面はアウト。"></canvas></div>
+ <div class="arena-wrap"><canvas id="arena" width="800" height="600" role="img" aria-label="円形フィールドを漂う図形をボールで壊すゲーム。パドルはどちら側でも反射して充電。エネルギーが空のボールが図形に衝突するとLIFEを失う。"></canvas></div>
+ <div class="energy-panel"><div class="energy-caption"><strong>ボールの攻撃エネルギー</strong><span>パドル接触で充電 / 攻撃で消費</span></div><div class="energy-track" role="progressbar" aria-label="ボールのエネルギー" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><span id="energy-fill" style="width:100%"></span></div></div>
  <div class="toolbar">
   <div class="instructions"><span>← → / A D / マウス・タッチ：パドルを円周に沿って移動</span><span>SPACE：開始・一時停止 / P：一時停止 / R：リセット</span></div>
   <div class="buttons"><button class="primary" id="start">スタート</button><button id="pause">一時停止</button><button id="reset">リセット</button></div>
  </div>
  <div class="info">
-  <div class="legend"><span class="cyan">●</span> パドル内側：反射 <span class="pink">●</span> パドル背面：ミス（3回でゲームオーバー）</div>
+  <div class="legend"><span class="cyan">●</span> パドル両面：反射＋充電 <span class="pink">●</span> ENERGY 0でオブジェクト衝突：反射＋LIFE −1</div>
   <div class="progress">状態 <b id="status">READY</b> <span class="bullet">·</span> 残りターゲット <b id="remaining">0</b></div>
  </div>
- <footer><a href="../index.html">← バージョン一覧に戻る</a><span>すべての反射角は衝突面の法線から計算。球速はステージ内で一定です。</span></footer>
+ <footer><a href="../index.html">← バージョン一覧に戻る</a><span>ボールの速さはステージ内で一定。フル充電で3回攻撃でき、空のボールではターゲットを壊せません。</span></footer>
 </main>
 <script src="../orbit/physics.js"></script>
 <script src="../orbit/render.js"></script>
