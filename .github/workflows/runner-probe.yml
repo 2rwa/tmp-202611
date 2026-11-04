@@ -1,0 +1,15 @@
+name: Runner probe
+on:
+  push:
+    branches: [main]
+    paths:
+      - docs/orbit-gameplay.md
+      - .github/workflows/runner-probe.yml
+jobs:
+  sanity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - run: |
+          echo "GitHub Actions runner started"
+          node --version
