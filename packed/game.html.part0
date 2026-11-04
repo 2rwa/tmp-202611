@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b1020">
+  <title>NEON BREAK — 図形ブロック崩し</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 22px 14px;
+      color: #f1f5ff;
+      background: radial-gradient(ellipse at 50% 0%, #1d2854 0%, #0b1020 58%, #070b16 100%);
+    }
+    .shell { width: min(100%, 850px); }
+    header {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin: 0 0 18px;
+    }
+    h1 { margin: 0; font-size: clamp(1.35rem, 4vw, 2rem); letter-spacing: .11em; font-weight: 850; }
+    h1 span { color: #63eeeb; }
+    .subtitle { margin: 4px 0 0; color: #9caad0; font-size: .85rem; }
+    .scores { display: flex; gap: 10px; }
+    .score {
+      background: #19233c;
+      padding: 8px 14px;
+      border: 1px solid #354263;
+      border-radius: 12px;
+      min-width: 80px;
+      text-align: center;
+    }
+    .score small { display: block; color: #a7b7d7; font-size: .69rem; letter-spacing: .08em; }
+    .score strong { font-variant-numeric: tabular-nums; font-size: 1.12rem; }
+    .frame {
+      border: 1px solid #344363;
+      border-radius: 18px;
+      overflow: hidden;
+      background: #0d1529;
+      box-shadow: 0 20px 72px #0006, inset 0 0 0 1px #ffffff0b;
+    }
+    canvas {
+      width: 100%;
+      aspect-ratio: 800 / 520;
+      height: auto;
+      display: block;
+      touch-action: none;
+      cursor: crosshair;
+    }
+    .bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      margin-top: 14px;
+    }
+    .hint { color: #aab8d7; font-size: .81rem; line-height: 1.6; }
+    .controls { display: flex; gap: 8px; }
+    button {
+      appearance: none;
+      border: 1px solid #586889;
+      padding: 10px 17px;
+      background: #1d2944;
+      color: #e9f1ff;
+      border-radius: 10px;
+      font-weight: 720;
+      font-size: .86rem;
+      cursor: pointer;
+    }
+    button:hover { background: #283857; }
+    button.primary { border-color: #77e9de; background: #5adbd4; color: #092331; }
+    button.primary:hover { background: #8ff8ed; }
+    button:focus-visible { outline: 3px solid #f6d886; outline-offset: 3px; }
+    .footer { margin-top: 9px; color: #7989ac; font-size: .76rem; }
+    @media (max-width: 620px) {
+      .score { min-width: 70px; padding: 6px 9px; }
+      header { align-items: start; }
+      .bar { justify-content: center; }
+      .hint { text-align: center; width: 100%; }
+      .footer { text-align: center; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <div>
+        <h1>NEON <span>BREAK</span></h1>
+        <p class="subtitle">散らばる図形ブロック + 楕円パドル + 法線反射</p>
+      </div>
+      <div class="scores">
+        <div class="score"><small>SCORE</small><strong id="score">0</strong></div>
+        <div class="score"><small>BEST</small><strong id="best">0</strong></div>
+        <div class="score"><small>LEVEL</small><strong id="level">1</strong></div>
+        <div class="score"><small>LIVES</small><strong id="lives">♥ ♥ ♥</strong></div>
+      </div>
+    </header>
+    <div class="frame">
+      <canvas id="game" width="800" height="520" role="img" aria-label="ブロック崩しのゲーム画面。左右キー、マウス、タッチでパドルを操作します。"></canvas>
+    </div>
+    <div class="bar">
+      <div class="hint">← → / A D / マウス・タッチで移動　•　スペースで開始・再開　•　Pで一時停止</div>
+      <div class="controls">
+        <button class="primary" id="start">スタート</button>
+        <button id="pause">一時停止</button>
+        <button id="reset">最初から</button>
+      </div>
+    </div>
+    <div class="footer">丸・三角・四角のブロック。接触面の法線で反射し、ボールの速さはレベル内で一定。パドルを動かしても急加速しません。</div>
+  </main>
+  <script>
+  (() => {
+    'use strict';
+
+    const canvas = document.querySelector('#game');
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width;
+    const H = canvas.height;
+    const els = Object.fromEntries(['score','best','level','lives','start','pause','reset'].map(id => [id, document.getElementById(id)]));
+
+    const colors = ['#54e7de','#57a8ff','#a68cff','#ec83c9','#ffb86f','#f6db82','#7fe6a6'];
+    const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+    const len = (x, y) => Math.hypot(x, y);
+    const normalize = (x, y) => {
+      const l = Math.hypot(x, y) || 1;
+      return { x: x / l, y: y / l };
+    };
+    const reflect = (vx, vy, nx, ny) => {
+      const dot = vx * nx + vy * ny;
+      return { vx: vx - 2 * dot * nx, vy: vy - 2 * dot * ny };
+    };
+    const pointInTriangle = (px, py, a, b, c) => {
+      const s1 = (px - c.x) * (b.y - c.y) - (b.x - c.x) * (py - c.y);
+      const s2 = (px - a.x) * (c.y - a.y) - (c.x - a.x) * (py - a.y);
+      const s3 = (px - b.x) * (a.y - b.y) - (a.x - b.x) * (py - b.y);
+      const hasNeg = s1 < 0 || s2 < 0 || s3 < 0;
+      const hasPos = s1 > 0 || s2 > 0 || s3 > 0;
+      return !(hasNeg && hasPos);
+    };
+    const closestPointOnSegment = (px, py, ax, ay, bx, by) => {
+      const dx = bx - ax, dy = by - ay;
+      const denom = dx * dx + dy * dy || 1;
+      const t = clamp(((px - ax) * dx + (py - ay) * dy) / denom, 0, 1);
+      return { x: ax + dx * t, y: ay + dy * t, t };
+    };
+
+    let best = 0;
+    try { best = Number(localStorage.getItem('neonBreakBest')) || 0; } catch (_) {}
+
+    let score = 0;
+    let level = 1;
+    let lives = 3;
+    let state = 'ready';
+    let last = 0;
+    let left = false;
+    let right = false;
+    let pointerX = null;
+    let particles = [];
+    let trails = [];
+    let bricks = [];
+
+    // ゲーム性を優先し、速度はレベル単位で一定にする。
+    // 速度変化はヒット数やパドル移動速度からは生じさせない。
+    const levelSpeed = () => Math.min(350 + (level - 1) * 18, 470);
+    const paddleSpin = 0.16; // パドルを動かした場合の反射方向への影響（速度への影響はなし）
+    const paddleSpinMax = 420;
+    const minUpwardFraction = 0.24; // 水平飛行・下向き跳ね返りを避ける
+    const paddle = { x: 334, y: 472, w: 132, h: 28, rx: 66, ry: 14 };
+    const ball = { x: 400, y: 458, vx: 195, vy: -330, r: 7 };
+    const stars = Array.from({ length: 48 }, (_, i) => ({ x: (i * 173 + 57) % W, y: (i * 101 + 23) % H, r: i % 5 === 0 ? 1.3 : 0.75 }));
+
+    function syncUI() {
+      els.score.textContent = score.toLocaleString('ja-JP');
+      els.best.textContent = best.toLocaleString('ja-JP');
+      els.level.textContent = level;
+      els.lives.textContent = '♥ '.repeat(lives).trim() || '—';
+      els.start.textContent = state === 'playing' ? 'プレイ中' : state === 'paused' ? '再開' : state === 'ready' ? 'スタート' : 'もう一度';
+      els.pause.textContent = state === 'paused' ? '再開' :

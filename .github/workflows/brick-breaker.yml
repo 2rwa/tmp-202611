@@ -1,0 +1,41 @@
+name: Brick Breaker Regression
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Synchronize before generating output
+        run: git pull --rebase origin main
+      - name: Reassemble source HTML from GitHub-safe chunks
+        shell: bash
+        run: |
+          cat packed/game.html.part0 packed/game.html.part1 packed/game.html.part2 packed/game.html.part3 > index.html
+          echo 'e47adb8ccc1a5b2c7b4691607eb1f8ab296aaa8dd90eecbdc831fed58cdcd0da  index.html' | sha256sum -c -
+          node -e "const fs=require('fs');const s=fs.readFileSync('index.html','utf8');const m=s.match(/<script>([\\s\\S]*?)<\\/script>/); if(!m)process.exit(1);fs.writeFileSync('/tmp/game-check.js',m[1]);"
+          node --check /tmp/game-check.js
+      - name: Regression tests (geometry, bounce, speed, UI)
+        run: node tests/game.test.cjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: playable-brick-breaker
+          path: index.html
+      - name: Commit playable HTML on main
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html
+          if ! git diff --cached --quiet; then
+            git commit -m 'build: generate tested playable brick breaker'
+            git push origin HEAD:main
+          fi

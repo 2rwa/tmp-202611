@@ -1,0 +1,193 @@
+ * n.x + rvy * n.y;
+      if (approach < -0.001) {
+        const out = reflect(rvx, rvy, n.x, n.y);
+        ball.vx = out.vx + influence;
+        ball.vy = out.vy;
+        keepBallSpeed();
+        keepPaddleBounceUpward();
+        pop(ball.x, ball.y, '#69f4e9', 5);
+      }
+      return true;
+    }
+
+    function getRectCollision(b) {
+      const nearestX = clamp(ball.x, b.x, b.x + b.w);
+      const nearestY = clamp(ball.y, b.y, b.y + b.h);
+      const dx = ball.x - nearestX;
+      const dy = ball.y - nearestY;
+      const dist2 = dx * dx + dy * dy;
+      if (dist2 > ball.r * ball.r) return null;
+
+      if (dist2 > 1e-6) {
+        const n = normalize(dx, dy);
+        return { nx: n.x, ny: n.y, px: nearestX, py: nearestY, penetration: ball.r - Math.sqrt(dist2) + 0.2 };
+      }
+
+      const leftPen = Math.abs(ball.x - b.x);
+      const rightPen = Math.abs(ball.x - (b.x + b.w));
+      const topPen = Math.abs(ball.y - b.y);
+      const bottomPen = Math.abs(ball.y - (b.y + b.h));
+      const minPen = Math.min(leftPen, rightPen, topPen, bottomPen);
+      if (minPen === leftPen) return { nx: -1, ny: 0, px: b.x, py: ball.y, penetration: ball.r + minPen + 0.25 };
+      if (minPen === rightPen) return { nx: 1, ny: 0, px: b.x + b.w, py: ball.y, penetration: ball.r + minPen + 0.25 };
+      if (minPen === topPen) return { nx: 0, ny: -1, px: ball.x, py: b.y, penetration: ball.r + minPen + 0.25 };
+      return { nx: 0, ny: 1, px: ball.x, py: b.y + b.h, penetration: ball.r + minPen + 0.25 };
+    }
+
+    function getCircleBrickCollision(b) {
+      const cx = b.x + b.w / 2;
+      const cy = b.y + b.h / 2;
+      const rr = Math.min(b.w, b.h) * 0.48;
+      const dx = ball.x - cx;
+      const dy = ball.y - cy;
+      const dist = Math.hypot(dx, dy);
+      if (dist > rr + ball.r) return null;
+      const n = dist > 1e-6 ? { x: dx / dist, y: dy / dist } : { x: 0, y: -1 };
+      return { nx: n.x, ny: n.y, px: cx + n.x * rr, py: cy + n.y * rr, penetration: rr + ball.r - dist + 0.25 };
+    }
+
+    function triangleVertices(b) {
+      const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+      const base = [
+        { x: 0, y: -b.h / 2 },
+        { x: b.w / 2, y: b.h / 2 },
+        { x: -b.w / 2, y: b.h / 2 }
+      ];
+      const cs = Math.cos(b.rotation), sn = Math.sin(b.rotation);
+      return base.map(p => ({ x: cx + p.x * cs - p.y * sn, y: cy + p.x * sn + p.y * cs }));
+    }
+
+    function getTriangleBrickCollision(b) {
+      const vertices = triangleVertices(b);
+      const inside = pointInTriangle(ball.x, ball.y, vertices[0], vertices[1], vertices[2]);
+      let nearest = null;
+      for (let i = 0; i < 3; i++) {
+        const a = vertices[i], c = vertices[(i + 1) % 3];
+        const cp = closestPointOnSegment(ball.x, ball.y, a.x, a.y, c.x, c.y);
+        const dx = ball.x - cp.x, dy = ball.y - cp.y;
+        const d2 = dx * dx + dy * dy;
+        if (nearest === null || d2 < nearest.d2) {
+          let n = normalize(c.y - a.y, a.x - c.x);
+          // 外向きになるよう三角形の重心との内積で向きを決める。
+          const gc = { x: b.x + b.w / 2, y: b.y + b.h / 6 };
+          // 実際の重心は回転させた頂点平均。
+          gc.x = (vertices[0].x + vertices[1].x + vertices[2].x) / 3;
+          gc.y = (vertices[0].y + vertices[1].y + vertices[2].y) / 3;
+          if (n.x * (gc.x - cp.x) + n.y * (gc.y - cp.y) > 0) n = { x: -n.x, y: -n.y };
+          nearest = { d2, px: cp.x, py: cp.y, edgeNormal: n };
+        }
+      }
+      if (!inside && nearest.d2 > ball.r * ball.r) return null;
+      const dist = Math.sqrt(nearest.d2);
+      let n;
+      if (inside || dist < 1e-8) n = nearest.edgeNormal;
+      else n = { x: (ball.x - nearest.px) / dist, y: (ball.y - nearest.py) / dist };
+      return {
+        nx: n.x, ny: n.y, px: nearest.px, py: nearest.py,
+        penetration: (inside ? ball.r + dist : ball.r - dist) + 0.25
+      };
+    }
+
+    function getBrickCollision(b) {
+      if (b.shape === 'circle') return getCircleBrickCollision(b);
+      if (b.shape === 'triangle') return getTriangleBrickCollision(b);
+      return getRectCollision(b);
+    }
+
+    function collideBricks() {
+      for (let i = bricks.length - 1; i >= 0; i--) {
+        const b = bricks[i];
+        const hit = getBrickCollision(b);
+        if (!hit) continue;
+
+        // 反射前に重なりを解消する。同一ブロックの連続ヒットを防ぐ。
+        ball.x += hit.nx * hit.penetration;
+        ball.y += hit.ny * hit.penetration;
+        const approach = ball.vx * hit.nx + ball.vy * hit.ny;
+        if (approach >= -0.001) continue;
+
+        const out = reflect(ball.vx, ball.vy, hit.nx, hit.ny);
+        ball.vx = out.vx;
+        ball.vy = out.vy;
+        keepBallSpeed();
+
+        b.hp--;
+        addScore(b.hp === 0 ? 10 * level : 5 * level);
+        pop(hit.px, hit.py, b.color, b.hp === 0 ? 11 : 5);
+        if (b.hp <= 0) bricks.splice(i, 1);
+        return true;
+      }
+      return false;
+    }
+
+    function movePaddle(dt) {
+      const oldX = paddle.x;
+      const target = pointerX !== null
+        ? clamp(pointerX - paddle.w / 2, 5, W - paddle.w - 5)
+        : clamp(paddle.x + ((right ? 1 : 0) - (left ? 1 : 0)) * 580 * dt, 5, W - paddle.w - 5);
+      const maxSpeed = pointerX !== null ? 1050 : 580;
+      paddle.x = clamp(paddle.x + clamp(target - paddle.x, -maxSpeed * dt, maxSpeed * dt), 5, W - paddle.w - 5);
+      return (paddle.x - oldX) / dt;
+    }
+
+    function update(dt) {
+      particles = particles.filter(p => p.t < p.life);
+      for (const p of particles) {
+        p.t += dt;
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.vy += 160 * dt;
+      }
+
+      if (state !== 'playing') {
+        movePaddle(dt);
+        if (state === 'ready') {
+          ball.x = paddle.x + paddle.w / 2;
+          ball.y = paddle.y - ball.r - 1;
+        }
+        return;
+      }
+
+      // ボールと移動中のパドルを同じ小刻みな時間ステップで進める。
+      const steps = Math.max(1, Math.ceil(dt / (1 / 240)));
+      const s = dt / steps;
+      for (let j = 0; j < steps; j++) {
+        const paddleVX = movePaddle(s);
+        ball.x += ball.vx * s;
+        ball.y += ball.vy * s;
+
+        resolveWallCollision();
+        collideBallPaddle(paddleVX);
+        collideBricks();
+
+        if (ball.y - ball.r > H) {
+          lives--;
+          pop(ball.x, H - 10, '#ff849b', 20);
+          if (lives <= 0) state = 'gameover';
+          else { state = 'ready'; resetBall(); }
+          syncUI();
+          break;
+        }
+        if (bricks.length === 0) {
+          addScore(100 * level);
+          nextLevel();
+          break;
+        }
+      }
+
+      trails.push({ x: ball.x, y: ball.y, t: 0 });
+      if (trails.length > 12) trails.shift();
+      for (const t of trails) t.t += dt;
+    }
+
+    function roundRectPath(x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.roundRect(x, y, w, h, r);
+    }
+
+    function ellipsePath(x, y, w, h) {
+      ctx.beginPath();
+      ctx.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
+    }
+
+ 
