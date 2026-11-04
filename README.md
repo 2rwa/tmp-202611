@@ -8,3 +8,4 @@ Temporary test repository for the single-file `index.html` brick-breaker.
 - `tests/game.test.cjs`: deterministic regression tests against the actual inline game script, with canvas and UI event mocks.
 
 The CI test covers rounded, triangular, rectangular blocks, eight triangle rotations, ellipse-paddle separation and fixed speed across repeated collisions. Browser rendering still needs manual gameplay QA; tests use an instrumented Canvas mock.
+CI trigger: GitHub Actions push event verification (2026-11-04).
