@@ -72,6 +72,8 @@ const server=http.createServer((req,res)=>{
   if(!real){
    await page.click('#swap');
    assert.equal(await page.locator('#targetLang').inputValue(),'en');
+   await page.locator('details summary').click();
+   assert.equal(await page.locator('#glossary').isVisible(),true);
    await page.locator('#glossary').fill('管理画面=dashboard');
    await page.click('#translate');
    await page.waitForFunction(()=>document.querySelector('#result').value.includes('Browser inference works.'),undefined,{timeout:15000});
