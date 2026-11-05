@@ -1,0 +1,60 @@
+name: PLaMo Browser Translation
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'translate/**'
+      - 'scripts/build-translate.cjs'
+      - 'tests/translate*'
+      - 'tests/wllama-stub.mjs'
+      - '.github/workflows/plamo-browser.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  browser-ui:
+    name: PFML3 unit and mocked browser regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-save --no-package-lock esbuild@0.25.12 @wllama/wllama@3.8.1 playwright@1.56.1
+      - run: npx playwright install --with-deps chromium
+      - run: node tests/translate.test.cjs
+      - run: node scripts/build-translate.cjs
+      - name: Build the real PLaMo browser bundle and check WASM asset
+        run: |
+          test -s dist/translate/app.js
+          test -s dist/translate/wasm/wllama.wasm
+      - run: node scripts/build-translate.cjs --mock
+      - run: node tests/translate.browser.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: plamo-browser-ui
+          path: test-artifacts/
+          if-no-files-found: ignore
+  real-inference:
+    name: Download 0.8B GGUF and translate in Chromium WASM
+    needs: browser-ui
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-save --no-package-lock esbuild@0.25.12 @wllama/wllama@3.8.1 playwright@1.56.1
+      - run: npx playwright install --with-deps chromium
+      - run: node scripts/build-translate.cjs
+      - name: Actual GGUF inference (model downloaded by Chromium; not committed)
+        run: REAL_MODEL=1 node tests/translate.browser.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: plamo-real-inference
+          path: test-artifacts/
+          if-no-files-found: ignore

@@ -46,3 +46,25 @@ The archived HTML pages are self-contained (no packages or network dependencies 
 - `orbit/render.js`, `orbit/game.js`, `orbit/style.css` implement Canvas visualization, controls and HUD.
 - `tests/orbit.test.cjs` and `tests/orbit-paddle.test.cjs` validate multi-step physics, paddle-object damage, and full game transitions. `tests/orbit.browser.cjs` exercises the production interface in headless Chromium and uploads screenshots via Actions.
 - Pages deployment tests **both** engine gameplay and actual browser input/rendering before publishing.
+
+## PLaMo 3 Translate 0.8B (browser experiment)
+
+- [PLaMo 3 Translate: browser demo](https://2rwa.github.io/tmp-202611/translate/)
+- Source: `translate/` (separate from the five archived games)
+- Model: `pfnet/plamo-3-translate-0.8b-GGUF`, `plamo-3-translate-0.8b-Q4_K_M.gguf` (~570 MB); not committed to the repository
+- The browser retrieves the model from Hugging Face, then runs PFML3 Japanese/English translation locally through wllama; WebGPU is experimental and WASM CPU mode is available. The browser can cache model data.
+- Supports context, glossary, polite/plain Japanese, direction swap, copy, unload.
+- Model distribution/licensing: https://huggingface.co/pfnet/plamo-3-translate-0.8b-GGUF
+
+### Verification
+```sh
+npm install --no-save --no-package-lock esbuild@0.25.12 @wllama/wllama@3.8.1 playwright@1.56.1
+npx playwright install chromium
+node tests/translate.test.cjs
+node scripts/build-translate.cjs --mock
+node tests/translate.browser.cjs
+node scripts/build-translate.cjs
+REAL_MODEL=1 node tests/translate.browser.cjs
+```
+
+`.github/workflows/plamo-browser.yml` automates the PFML3 unit check, mock Chromium UI regression, WebGPU SwiftShader probe, and a separate **real 0.8B GGUF CPU/WASM inference** job. A successful mock UI test does **not** demonstrate real model inference or compatibility. The Pages workflow also checks the production bundle and preserves all five existing games.

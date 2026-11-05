@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#091622"><title>PLaMo 3 Translate 0.8B | Browser Lab</title>
+<link rel="stylesheet" href="./style.css"><script type="module" src="./app.js"></script></head>
+<body><main class="wrap">
+<nav><a href="../">← tmp-202611</a><span>LOCAL AI / WEBGPU EXPERIMENT</span></nav>
+<header><p class="eyebrow">PREFERRED NETWORKS × BROWSER</p><h1>PLaMo <em>3</em><br>Translate <span>0.8B</span></h1>
+<p class="lede">原文を翻訳サーバーに送らず、ブラウザ内で推論する実験。PFNのGGUF Q4_K_MをWebGPUまたはWASMで実行します。</p></header>
+<section class="card" aria-labelledby="setup-title"><div class="heading"><h2 id="setup-title">01 / MODEL</h2><span class="pill">約570MB · 初回ダウンロード</span></div>
+<div class="toolbar"><label>推論方式<select id="backend"><option value="auto">WebGPU優先（非対応時CPU）</option><option value="cpu">CPU / WASM固定</option></select></label>
+<button class="primary" id="load">モデルを読み込む</button><button id="unload" disabled>メモリを解放</button></div>
+<progress id="progress" value="0" max="100" aria-label="ダウンロード進捗"></progress>
+<div class="subline"><span id="status" role="status" aria-live="polite" data-state="idle">モデル未読込</span><small id="progressText">待機中</small></div>
+<p class="note">初回にHugging Faceからモデルを取得し、次回はキャッシュを利用します。WebGPUが不安定な環境ではCPU/WASM固定を試してください。</p></section>
+<section class="card" aria-labelledby="translate-title"><div class="heading"><h2 id="translate-title">02 / TRANSLATE</h2><span class="pill neutral">PFML3専用プロンプト</span></div>
+<div class="languages"><label>原文<select id="sourceLang"><option value="en">英語</option><option value="ja">日本語</option></select></label>
+<button id="swap">⇄ 方向を反転</button><label>訳文<select id="targetLang" disabled><option value="ja">日本語</option><option value="en">英語</option></select></label></div>
+<div class="columns"><div><label for="source">翻訳する文章</label><textarea id="source" rows="8" spellcheck="false">The model runs in your browser without sending the text to a translation server.</textarea></div>
+<div><label for="result">翻訳結果</label><textarea id="result" rows="8" readonly placeholder="翻訳結果がここに表示されます"></textarea></div></div>
+<details><summary>オプション（文体・文脈・用語集）</summary><div class="options">
+<label>日本語の文体<select id="form"><option value="polite">です・ます調</option><option value="plain">だ・である調</option></select></label>
+<label>補足文脈<textarea id="context" rows="2" placeholder="例：技術文書の説明です"></textarea></label>
+<label>用語集（一行に 原語=訳語）<textarea id="glossary" rows="3" placeholder="WebGPU=WebGPU"></textarea></label></div></details>
+<div class="actions"><button id="translate" class="primary" disabled>翻訳する</button><button id="copy" disabled>訳文をコピー</button><span id="stats" aria-live="polite"></span></div>
+</section><footer><p>実験版。モデルの取得にはネットワークを使用しますが、翻訳対象テキストを独自サーバーに送信せず端末で推論します。</p><a href="https://huggingface.co/pfnet/plamo-3-translate-0.8b-GGUF">モデル・ライセンス（PFN）</a> · <a href="https://github.com/2rwa/tmp-202611">Source</a></footer>
+</main></body></html>
