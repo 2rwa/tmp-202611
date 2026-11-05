@@ -16,3 +16,5 @@ details{border-top:1px solid #325366;margin-top:22px;padding-top:17px}summary{cu
 .actions{margin-top:22px}.actions button{min-width:140px}.actions span{margin-left:auto;color:#99c2ce;font-size:.8rem}
 footer{border-top:1px solid #2d4a5b;margin-top:45px;padding-top:20px;color:#93aeba;line-height:1.9;font-size:.78rem}footer p{max-width:790px}
 @media(max-width:670px){.columns,.options{grid-template-columns:1fr}nav span{font-size:.65rem}h1{font-size:3rem}.languages{align-items:center}.actions span{width:100%;margin:0}}
+
+nav{flex-wrap:wrap;align-items:center}.github-star{display:flex;align-items:center;min-height:28px;letter-spacing:normal}

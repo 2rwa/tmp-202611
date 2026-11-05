@@ -31,6 +31,7 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     permissions:
       contents: read
+      actions: read
       pages: write
       id-token: write
     steps:
@@ -58,8 +59,28 @@ jobs:
         run: node scripts/build-translate.cjs --mock
       - name: Test translation UI in real Chromium
         run: node tests/translate.browser.cjs
-      - name: Build production PLaMo browser bundle
-        run: node scripts/build-translate.cjs
+      - name: Verify GitHub Star buttons in Chromium
+        run: node tests/github-star.browser.cjs
+      - name: Find latest successfully tested PLaMo runtime
+        id: verified
+        env:
+          API_TOKEN: ${{ github.token }}
+        run: |
+          response=$(curl --fail --silent --show-error --retry 3 \
+            -H "Authorization: Bearer $API_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/plamo-upstream.yml/runs?status=success&per_page=30")
+          run_id=$(printf '%s' "$response" | jq -r '.workflow_runs[] | select(.head_branch == "main") | .id' | head -n 1)
+          test -n "$run_id"
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+      - name: Download tested PLaMo JavaScript and WebAssembly
+        uses: actions/download-artifact@v4
+        with:
+          name: plamo-upstream-runtime-and-e2e
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.verified.outputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: downloaded
       - name: Save screenshots from real browser
         if: always()
         uses: actions/upload-artifact@v4
@@ -73,6 +94,19 @@ jobs:
           cp index.html dist/index.html
           cp -r games dist/games
           cp -r orbit dist/orbit
+          if [ -d downloaded/dist/translate ]; then
+            cp -r downloaded/dist/translate dist/translate
+          elif [ -d downloaded/translate ]; then
+            cp -r downloaded/translate dist/translate
+          else
+            echo 'No verified PLaMo runtime artifact found' >&2
+            exit 1
+          fi
+          # Keep the tested JavaScript/WASM, but use the current page UI and Star button.
+          cp translate/index.html dist/translate/index.html
+          cp translate/style.css dist/translate/style.css
+          grep -q 'class="github-button"' dist/index.html
+          grep -q 'class="github-button"' dist/translate/index.html
           test -s dist/games/v5-orbit.html
           test -s dist/orbit/physics.js
           touch dist/.nojekyll
