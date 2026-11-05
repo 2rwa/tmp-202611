@@ -79,12 +79,16 @@ jobs:
           xcrun simctl list devices available -j > test-artifacts/ios-simulator/devices.json
       - name: Boot iPhone Simulator and open actual public translator in Mobile Safari
         run: |
-          device=$(jq -r '[.devices[][] | select(.name | test("^iPhone (16|17)")) | .udid][0] // empty' test-artifacts/ios-simulator/devices.json)
+          device=$(jq -r '[.devices | to_entries[] | select(.key | endswith("iOS-26-2")) | .value[] | select(.name == "iPhone 16 Pro") | .udid][0] // empty' test-artifacts/ios-simulator/devices.json)
+          if [ -z "$device" ]; then
+            device=$(jq -r '[.devices | to_entries[] | select(.key | contains("iOS-26")) | .value[] | select(.name | test("^iPhone (16|17)")) | .udid] | last // empty' test-artifacts/ios-simulator/devices.json)
+          fi
           if [ -z "$device" ]; then
             echo 'No compatible iPhone Simulator device is installed' >&2
             exit 1
           fi
           echo "Simulator UDID: $device"
+          jq -r --arg id "$device" '.devices | to_entries[] | select(any(.value[]; .udid == $id)) | .key' test-artifacts/ios-simulator/devices.json
           xcrun simctl boot "$device" || true
           xcrun simctl bootstatus "$device" -b
           xcrun simctl openurl "$device" 'https://2rwa.github.io/tmp-202611/translate/'
