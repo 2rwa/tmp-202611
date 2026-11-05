@@ -27,6 +27,7 @@ const server=http.createServer((req,res)=>{
   const port=server.address().port;
   await page.goto('http://127.0.0.1:'+port+'/translate/');
   await page.addScriptTag({url:'/translate/wllama-probe.js',type:'module'});
+  await page.waitForFunction(() => typeof globalThis.__wllamaProbe !== 'undefined', undefined, {timeout:30000});
   const result=await page.evaluate(async()=>await globalThis.__wllamaProbe);
   console.log('Probe result',JSON.stringify(result).slice(0,12000));
   assert.equal(result.ok,true,result.error+'\n'+result.stack);
