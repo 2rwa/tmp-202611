@@ -63,10 +63,13 @@ jobs:
           cp translate/style.css dist/translate/style.css
           ls -lh dist/translate/compat dist/translate/wasm
       - name: macOS Safari WebDriver / cache / worker / real tiny GGUF smoke test
+        env:
+          SAFARI_FORCE_COMPAT: '1'
         run: node tests/safari-macos.browser.cjs
       - name: PLaMo 0.8B real Japanese translation with macOS Safari
         env:
           SAFARI_REAL_MODEL: '1'
+          SAFARI_FORCE_COMPAT: '1'
         run: node tests/safari-macos.browser.cjs
       - uses: actions/upload-artifact@v4
         if: always()

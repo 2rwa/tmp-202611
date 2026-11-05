@@ -7,6 +7,7 @@ const {Builder,By}=require('selenium-webdriver');
 const safari=require('selenium-webdriver/safari');
 const root=path.resolve('dist');
 const full=process.env.SAFARI_REAL_MODEL==='1';
+const forceCompat=process.env.SAFARI_FORCE_COMPAT==='1';
 const mime={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8',
  '.mjs':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.wasm':'application/wasm'};
 const server=http.createServer((req,res)=>{
@@ -46,16 +47,40 @@ async function poll(driver,label,cb,ms=90000){
   stage='navigate';
   await driver.get(base);
   const env=await driver.executeScript('return {userAgent:navigator.userAgent,opfs:!!navigator.storage?.getDirectory,secure:isSecureContext,jsPi:!!WebAssembly.Suspending,mem64:(()=>{try{new WebAssembly.Memory({address:"i64",initial:1n});return true;}catch(e){return false;}})()}');
-  console.log('MAC_SAFARI_ENV',JSON.stringify(env));
+  console.log('MAC_SAFARI_ENV',JSON.stringify(env),'forcedCompat='+forceCompat);
   if(!env.userAgent.includes('Safari'))throw Error('Browser is not Safari');
+  if(full && forceCompat){
+   await driver.executeScript("Object.defineProperty(WebAssembly,'Suspending',{configurable:true,value:undefined})");
+  }
   if(!full){
    stage='module-probe';
-   await driver.executeScript("window.__expectCompat=false;window.__browserErrors=[];window.addEventListener('error',e=>window.__browserErrors.push(String(e.message)));window.addEventListener('unhandledrejection',e=>window.__browserErrors.push(String(e.reason)));var script=document.createElement('script');script.type='module';script.src='/translate/wllama-probe.js';document.head.appendChild(script);");
+   await driver.executeScript(`
+     window.__browserErrors=[];
+     window.__probeStages=[];
+     window.addEventListener('error',e=>window.__browserErrors.push(String(e.message)));
+     window.addEventListener('unhandledrejection',e=>window.__browserErrors.push(String(e.reason)));
+     const originalInfo=console.info.bind(console);
+     console.info=(...args)=>{if(args[0]==='[wllama-probe]')window.__probeStages.push(args.map(String).join(' '));originalInfo(...args);};
+     window.__expectCompat=${forceCompat};
+     if(${forceCompat}) {
+       try{Object.defineProperty(WebAssembly,'Suspending',{configurable:true,value:undefined});}
+       catch(e){window.__browserErrors.push('Could not disable JSPI: '+e);}
+     }
+     const script=document.createElement('script');
+     script.type='module';script.src='/translate/wllama-probe.js';document.head.appendChild(script);
+   `);
    await poll(driver,'PLaMo probe module',()=>({done:!!window.__wllamaProbe,errors:window.__browserErrors}),45000);
    stage='tiny-model-inference';
-   const data=await driver.executeAsyncScript("var done=arguments[0];Promise.resolve(window.__wllamaProbe).then(v=>done(v),e=>done({ok:false,error:String(e)}));");
-   console.log('MAC_SAFARI_PROBE',JSON.stringify(data).slice(0,13000));
-   assert.equal(data.ok,true,JSON.stringify(data.events).slice(-4000));
+   await driver.executeScript("window.__probeResult={status:'pending'};Promise.resolve(window.__wllamaProbe).then(v=>window.__probeResult={status:'done',value:v},e=>window.__probeResult={status:'done',value:{ok:false,error:String(e)}});");
+   const data=await poll(driver,'tiny-model-inference',()=>{
+     const r=window.__probeResult;
+     const stages=window.__probeStages||[];
+     return {done:r?.status==='done'||(window.__browserErrors||[]).length>0,
+       value:r?.value,stages:stages.slice(-6),errors:window.__browserErrors||[]};
+   },90000);
+   console.log('MAC_SAFARI_PROBE',JSON.stringify(data).slice(0,15000));
+   assert.deepEqual(data.errors,[], 'Browser must not have uncaught errors');
+   assert.ok(data.value?.ok, JSON.stringify(data.value||data.stages).slice(-4000));
   }else{
    stage='model-load';
    await driver.findElement(By.id('backend')).sendKeys('CPU / WASM固定');
@@ -89,7 +114,7 @@ async function poll(driver,label,cb,ms=90000){
     fs.mkdirSync('test-artifacts',{recursive:true});
     const png=await driver.takeScreenshot();
     fs.writeFileSync('test-artifacts/native-safari-'+(full?'real':'smoke')+'.png',Buffer.from(png,'base64'));
-    const snap=await driver.executeScript("return {status:document.querySelector('#status')?.textContent,errors:window.__browserErrors||[],assets:performance.getEntriesByType('resource').filter(x=>x.name.includes('/compat/')||x.name.includes('jsdelivr')).map(x=>x.name)}").catch(e=>({error:String(e)}));
+    const snap=await driver.executeScript("return {status:document.querySelector('#status')?.textContent,errors:window.__browserErrors||[],stages:window.__probeStages||[],probe:window.__probeResult||null,assets:performance.getEntriesByType('resource').filter(x=>x.name.includes('/compat/')||x.name.includes('jsdelivr')).map(x=>x.name)}").catch(e=>({error:String(e)}));
     console.log('MAC_SAFARI_DIAGNOSTICS',JSON.stringify(snap));
    }catch(e){console.error('Screenshot or diagnostic unavailable',String(e));}
    await driver.quit().catch(e=>console.error('Safari quit error',String(e)));
