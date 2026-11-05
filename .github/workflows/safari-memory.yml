@@ -1,0 +1,101 @@
+name: Safari Memory and iPhone Simulator diagnostics
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tests/safari-memory.browser.cjs'
+      - '.github/workflows/safari-memory.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  mac-safari-memory:
+    runs-on: macos-15
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Prepare real Safari WebDriver
+        run: |
+          sw_vers
+          /usr/bin/safaridriver --version
+          /usr/bin/safaridriver --enable || sudo /usr/bin/safaridriver --enable
+          npm install --no-save --no-package-lock selenium-webdriver@4.36.0
+          node --check tests/safari-memory.browser.cjs
+      - name: Download Safari-verified runtime (not the mock build)
+        uses: actions/download-artifact@v4
+        with:
+          repository: ${{ github.repository }}
+          run-id: 42011283689
+          name: plamo-safari-verified-runtime
+          github-token: ${{ github.token }}
+          path: downloaded
+      - name: Assemble PLaMo GGUF runtime
+        run: |
+          mkdir -p dist
+          if [ -d downloaded/dist/translate ]; then
+            cp -R downloaded/dist/translate dist/translate
+          else
+            cp -R downloaded/translate dist/translate
+          fi
+          test -s dist/translate/compat/wllama.wasm
+          test -s dist/translate/app.js
+          ls -lh dist/translate/compat/wllama.wasm
+      - name: Native Safari CPU (PLaMo 0.8B, n_ctx 2048) memory samples
+        env:
+          SAFARI_MEMORY_MODE: cpu
+        run: node tests/safari-memory.browser.cjs
+      - name: Native Safari WebGPU diagnostics (same model/context)
+        continue-on-error: true
+        env:
+          SAFARI_MEMORY_MODE: gpu
+        run: node tests/safari-memory.browser.cjs
+      - name: Archive per-process RSS CSV, stage markers and screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: safari-memory-cpu-gpu
+          path: test-artifacts/safari-memory/
+          if-no-files-found: warn
+  ios-simulator:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode 26 with iOS Simulator runtime
+        run: |
+          for ver in 26.3 26.2 26.1.1 26.0.1; do
+            if [ -d "/Applications/Xcode_${ver}.app/Contents/Developer" ]; then
+              sudo xcode-select --switch "/Applications/Xcode_${ver}.app/Contents/Developer"
+              break
+            fi
+          done
+          xcodebuild -version
+          xcrun simctl list runtimes
+          mkdir -p test-artifacts/ios-simulator
+          xcrun simctl list devices available -j > test-artifacts/ios-simulator/devices.json
+      - name: Boot iPhone Simulator and open actual public translator in Mobile Safari
+        run: |
+          device=$(jq -r '[.devices[][] | select(.name | test("^iPhone (16|17)")) | .udid][0] // empty' test-artifacts/ios-simulator/devices.json)
+          if [ -z "$device" ]; then
+            echo 'No compatible iPhone Simulator device is installed' >&2
+            exit 1
+          fi
+          echo "Simulator UDID: $device"
+          xcrun simctl boot "$device" || true
+          xcrun simctl bootstatus "$device" -b
+          xcrun simctl openurl "$device" 'https://2rwa.github.io/tmp-202611/translate/'
+          sleep 20
+          xcrun simctl io "$device" screenshot test-artifacts/ios-simulator/translator-safari.png
+          xcrun simctl spawn "$device" launchctl list > test-artifacts/ios-simulator/launchctl.txt
+          echo "iPhone Simulator Safari navigation completed; this is a navigation smoke test, not GGUF inference or an iPhone Jetsam test."
+      - name: Preserve Simulator device details and screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: iphone-simulator-safari-smoke
+          path: test-artifacts/ios-simulator/
+          if-no-files-found: warn
