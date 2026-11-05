@@ -94,6 +94,9 @@ jobs:
           cp index.html dist/index.html
           cp -r games dist/games
           cp -r orbit dist/orbit
+          # The mock UI test has already populated dist/translate.
+          # Remove it so the verified model bundle is copied to the correct location.
+          rm -rf dist/translate
           if [ -d downloaded/dist/translate ]; then
             cp -r downloaded/dist/translate dist/translate
           elif [ -d downloaded/translate ]; then
