@@ -1,0 +1,68 @@
+name: Publish verified PLaMo browser runtime
+on:
+  workflow_run:
+    workflows:
+      - PLaMo 3-compatible wllama upstream build
+    types:
+      - completed
+permissions:
+  contents: read
+  actions: read
+  pages: write
+  id-token: write
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Rebuild archived game snapshots and verify physics
+        run: |
+          node scripts/build-site.cjs
+          node tests/game.test.cjs
+          node tests/orbit.test.cjs
+          node tests/orbit-paddle.test.cjs
+      - name: Get the actual tested PLaMo runtime from upstream workflow
+        uses: actions/download-artifact@v4
+        with:
+          name: plamo-upstream-runtime-and-e2e
+          repository: ${{ github.repository }}
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: downloaded
+      - name: Assemble site with matching tested JS/WASM
+        run: |
+          mkdir -p dist
+          cp index.html dist/index.html
+          cp -r games dist/games
+          cp -r orbit dist/orbit
+          if [ -d downloaded/dist/translate ]; then
+            cp -r downloaded/dist/translate dist/translate
+          elif [ -d downloaded/translate ]; then
+            cp -r downloaded/translate dist/translate
+          else
+            echo "PLaMo production bundle missing from upstream artifact" >&2
+            find downloaded -maxdepth 4 -type f
+            exit 1
+          fi
+          test -s dist/translate/index.html
+          test -s dist/translate/app.js
+          test -s dist/translate/wasm/wllama.wasm
+          touch dist/.nojekyll
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: dist
+      - name: Deploy verified model to Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
