@@ -1,0 +1,70 @@
+name: PLaMo 3-compatible wllama upstream build
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/plamo-upstream.yml'
+      - 'scripts/build-translate.cjs'
+      - 'translate/**'
+      - 'tests/translate.browser.cjs'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: plamo-upstream-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  upstream-real-inference:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Fetch pinned upstream wllama and llama.cpp
+        run: |
+          git clone https://github.com/ngxson/wllama.git /tmp/wllama
+          cd /tmp/wllama
+          git checkout d275dac17bc7f190161deb24fd834ce03342e2bc
+          git submodule update --init --recursive
+          test -s llama.cpp/src/llama-vocab.cpp
+          grep -q 'tokenizer_model == "plamo3"' llama.cpp/src/llama-vocab.cpp
+          echo "wllama commit: $(git rev-parse HEAD)"
+          echo "llama.cpp commit: $(git -C llama.cpp rev-parse HEAD)"
+      - name: Install upstream build tools
+        run: npm ci --prefix /tmp/wllama
+      - name: Build latest llama.cpp WebGPU/WASM runtime
+        env:
+          SKIP_COMPAT: '1'
+        run: |
+          cd /tmp/wllama
+          npm run build:wasm
+          npm run build
+          test -s src/wasm/wllama.wasm
+          test -s esm/index.js
+          ls -lh src/wasm/wllama.wasm esm/index.js
+      - name: Install Playwright and build dependencies
+        run: |
+          npm install --no-save --no-package-lock esbuild@0.25.12 playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Build browser app against matching upstream JavaScript and WASM
+        env:
+          WLLAMA_UPSTREAM_DIR: /tmp/wllama
+        run: |
+          node scripts/build-translate.cjs
+          test -s dist/translate/app.js
+          test -s dist/translate/wasm/wllama.wasm
+      - name: Real PLaMo 0.8B GGUF translation on WASM
+        env:
+          REAL_MODEL: '1'
+        run: node tests/translate.browser.cjs
+      - name: Keep browser screenshots and production runtime
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: plamo-upstream-runtime-and-e2e
+          path: |
+            test-artifacts/
+            dist/translate/
+          if-no-files-found: ignore

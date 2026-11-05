@@ -39,6 +39,9 @@ jobs:
           path: test-artifacts/
           if-no-files-found: ignore
   real-inference:
+    # The published v3.8.1 runtime cannot decode GGUF tokenizer.model=plamo3.
+    # Keep the old-model control test available manually, but avoid a known failure on every push.
+    if: github.event_name == 'workflow_dispatch'
     name: Download 0.8B GGUF and translate in Chromium WASM
     needs: browser-ui
     runs-on: ubuntu-latest

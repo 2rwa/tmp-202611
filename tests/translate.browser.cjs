@@ -62,7 +62,9 @@ const server=http.createServer((req,res)=>{
   console.log('WebGPU SwiftShader offscreen compute probe:',gpu);
   if(real)await page.selectOption('#backend','cpu');
   await page.click('#load');
-  await page.waitForSelector('#status[data-state="ready"]',{timeout:real?480000:15000});
+  await page.waitForFunction(() => ['ready','error'].includes(document.querySelector('#status').dataset.state), undefined, {timeout:real?120000:15000});
+  const loadState=await page.locator('#status').getAttribute('data-state');
+  assert.equal(loadState,'ready',await page.locator('#status').innerText());
   assert.equal(await page.locator('#translate').isEnabled(),true);
   await page.click('#translate');
   await page.waitForFunction(()=>document.querySelector('#status').dataset.state==='ready' && document.querySelector('#result').value.length>0,undefined,{timeout:real?480000:30000});

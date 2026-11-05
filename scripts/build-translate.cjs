@@ -3,24 +3,34 @@ const fs=require('node:fs');
 const path=require('node:path');
 const esbuild=require('esbuild');
 const mock=process.argv.includes('--mock');
+const upstream=process.env.WLLAMA_UPSTREAM_DIR;
 const out=path.resolve('dist/translate');
 fs.mkdirSync(out,{recursive:true});
-for(const file of ['index.html','style.css']) fs.copyFileSync(path.resolve('translate',file),path.join(out,file));
-const plugins=mock?[{name:'fake-inference-only-for-browser-regression',setup(build){
- build.onResolve({filter:new RegExp('^@wllama/wllama$')},()=>({path:path.resolve('tests/wllama-stub.mjs')}));
-}}]:[];
+for(const file of ['index.html','style.css']){
+ fs.copyFileSync(path.resolve('translate',file),path.join(out,file));
+}
+const plugins=[];
+if(mock){
+ plugins.push({name:'mock-engine',setup(build){
+  build.onResolve({filter:new RegExp('^@wllama/wllama$')},()=>({path:path.resolve('tests/wllama-stub.mjs')}));
+ }});
+}else if(upstream){
+ plugins.push({name:'upstream-engine',setup(build){
+  build.onResolve({filter:new RegExp('^@wllama/wllama$')},()=>({path:path.resolve(upstream,'esm/index.js')}));
+ }});
+}
 (async()=>{
  await esbuild.build({entryPoints:['translate/app.js'],outfile:path.join(out,'app.js'),bundle:true,platform:'browser',format:'esm',target:'es2022',plugins,logLevel:'warning'});
  if(!mock){
   if(process.argv.includes('--probe')){
-    await esbuild.build({entryPoints:['tests/wllama-probe.entry.mjs'],outfile:path.join(out,'wllama-probe.js'),bundle:true,platform:'browser',format:'esm',target:'es2022',logLevel:'warning'});
+   await esbuild.build({entryPoints:['tests/wllama-probe.entry.mjs'],outfile:path.join(out,'wllama-probe.js'),bundle:true,platform:'browser',format:'esm',target:'es2022',plugins,logLevel:'warning'});
   }
-  const src=path.resolve('node_modules/@wllama/wllama/esm/wasm/wllama.wasm');
-  if(!fs.existsSync(src)) throw Error('wllama binary not found: '+src);
+  const src=upstream?path.resolve(upstream,'src/wasm/wllama.wasm'):path.resolve('node_modules/@wllama/wllama/esm/wasm/wllama.wasm');
+  if(!fs.existsSync(src))throw Error('wllama binary missing: '+src);
   fs.mkdirSync(path.join(out,'wasm'),{recursive:true});
   fs.copyFileSync(src,path.join(out,'wasm/wllama.wasm'));
-  console.log('Real inference bundle, WASM bytes:',fs.statSync(src).size);
+  console.log('Real inference bundle, WASM bytes:',fs.statSync(src).size,upstream?'source build':'npm release');
  }else{
-  console.log('Mock inference bundle (UI tests only).');
+  console.log('Mock inference bundle (UI tests only)');
  }
-})().catch(e=>{console.error(e);process.exitCode=1;});
+})().catch(error=>{console.error(error);process.exitCode=1;});

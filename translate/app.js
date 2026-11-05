@@ -4,6 +4,13 @@ const el=id=>document.getElementById(id);
 const refs={};
 for(const id of ['status','load','unload','translate','copy','swap','source','result','sourceLang','targetLang','form','context','glossary','backend','progress','progressText','stats']) refs[id]=el(id);
 let model=null,working=false,ready=false,backend='';
+const runtimeErrors=[];
+const logger={
+ debug:(...args)=>console.debug(...args),
+ log:(...args)=>console.log(...args),
+ warn:(...args)=>console.warn(...args),
+ error:(...args)=>{runtimeErrors.push(args.map(String).join(' '));console.error(...args);}
+};
 const announce=(state,message)=>{refs.status.dataset.state=state;refs.status.textContent=message;};
 function buttons(){
  refs.load.disabled=working||ready;
@@ -13,7 +20,14 @@ function buttons(){
  refs.swap.disabled=working;
  refs.backend.disabled=working||ready;
 }
-function report(error){announce('error','エラー: '+String(error?.message||error));console.error(error);}
+function report(error){
+ const message=String(error?.message||error);
+ const unsupported=runtimeErrors.some(m=>m.includes("unknown tokenizer: 'plamo3'"));
+ announce('error',unsupported
+  ? "読み込み不可: PLaMo 3用トークナイザー(plamo3)に現在の推論ランタイムが未対応です。最新版ランタイムの検証中です"
+  : 'エラー: '+message);
+ console.error(error);
+}
 function syncDirection(){refs.targetLang.value=refs.sourceLang.value==='en'?'ja':'en';refs.form.disabled=refs.targetLang.value!=='ja';}
 refs.sourceLang.addEventListener('change',()=>{syncDirection();buttons();});
 refs.source.addEventListener('input',buttons);
@@ -28,12 +42,12 @@ refs.copy.addEventListener('click',async()=>{
 });
 refs.load.addEventListener('click',async()=>{
  if(working||ready)return;
- working=true;buttons();
+ working=true;runtimeErrors.length=0;buttons();
  const gpu=refs.backend.value==='auto'&&Boolean(navigator.gpu);
  backend=gpu?'WebGPU要求':'WASM / CPU';
  announce('loading','モデルを取得・初期化中（約570 MB / '+backend+'）');
  try{
-  model=new Wllama({default:new URL('./wasm/wllama.wasm',import.meta.url).href},{allowOffline:true});
+  model=new Wllama({default:new URL('./wasm/wllama.wasm',import.meta.url).href},{allowOffline:true,logger});
   await model.loadModelFromHF({repo:MODEL_REPO,file:MODEL_FILE},{
    n_ctx:2048,n_threads:1,n_gpu_layers:gpu?99:0,useCache:true,
    progressCallback:({loaded:bytes,total})=>{
