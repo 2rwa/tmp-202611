@@ -7,6 +7,7 @@ on:
       - 'scripts/build-translate.cjs'
       - 'tests/translate*'
       - 'tests/wllama-stub.mjs'
+      - 'tests/wllama-probe*'
       - '.github/workflows/plamo-browser.yml'
   workflow_dispatch:
 permissions:
@@ -49,7 +50,9 @@ jobs:
           node-version: '22'
       - run: npm install --no-save --no-package-lock esbuild@0.25.12 @wllama/wllama@3.8.1 playwright@1.56.1
       - run: npx playwright install --with-deps chromium
-      - run: node scripts/build-translate.cjs
+      - run: node scripts/build-translate.cjs --probe
+      - name: Known-good tiny GGUF runtime smoke test (check wllama protocol)
+        run: node tests/wllama-probe.browser.cjs
       - name: Actual GGUF inference (model downloaded by Chromium; not committed)
         run: REAL_MODEL=1 node tests/translate.browser.cjs
       - uses: actions/upload-artifact@v4

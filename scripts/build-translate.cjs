@@ -12,6 +12,9 @@ const plugins=mock?[{name:'fake-inference-only-for-browser-regression',setup(bui
 (async()=>{
  await esbuild.build({entryPoints:['translate/app.js'],outfile:path.join(out,'app.js'),bundle:true,platform:'browser',format:'esm',target:'es2022',plugins,logLevel:'warning'});
  if(!mock){
+  if(process.argv.includes('--probe')){
+    await esbuild.build({entryPoints:['tests/wllama-probe.entry.mjs'],outfile:path.join(out,'wllama-probe.js'),bundle:true,platform:'browser',format:'esm',target:'es2022',logLevel:'warning'});
+  }
   const src=path.resolve('node_modules/@wllama/wllama/esm/wasm/wllama.wasm');
   if(!fs.existsSync(src)) throw Error('wllama binary not found: '+src);
   fs.mkdirSync(path.join(out,'wasm'),{recursive:true});
