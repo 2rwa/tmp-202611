@@ -1,15 +1,8 @@
 name: Native macOS Safari PLaMo regression
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/plamo-macos-safari.yml'
-      - 'tests/safari-macos.browser.cjs'
-      - 'tests/wllama-probe.entry.mjs'
   workflow_run:
     workflows: ['PLaMo 3-compatible wllama upstream build']
     types: [completed]
-  workflow_dispatch:
 permissions:
   contents: read
   actions: read
@@ -19,11 +12,13 @@ concurrency:
 jobs:
   safari:
     # workflow_run also fires for test failures: verify the generated artifact anyway.
-    if: ${{ github.event_name != 'workflow_run' || (github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.head_repository.full_name == github.repository) }}
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.head_repository.full_name == github.repository }}
     runs-on: macos-15
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -37,9 +32,7 @@ jobs:
       - name: Download same-build production and compatibility assets
         uses: actions/download-artifact@v4
         with:
-          # For push/manual diagnostics, use the latest failed build that actually
-          # produced both runtimes. workflow_run uses its own build artifact.
-          run-id: ${{ github.event.workflow_run.id || 41979105170 }}
+          run-id: ${{ github.event.workflow_run.id }}
           name: plamo-upstream-runtime-and-e2e
           repository: ${{ github.repository }}
           github-token: ${{ github.token }}
@@ -62,15 +55,18 @@ jobs:
           cp translate/index.html dist/translate/index.html
           cp translate/style.css dist/translate/style.css
           ls -lh dist/translate/compat dist/translate/wasm
-      - name: macOS Safari WebDriver / cache / worker / real tiny GGUF smoke test
-        env:
-          SAFARI_FORCE_COMPAT: '1'
+      - name: macOS Safari automatic compat selection / real tiny GGUF smoke test
         run: node tests/safari-macos.browser.cjs
       - name: PLaMo 0.8B real Japanese translation with macOS Safari
         env:
           SAFARI_REAL_MODEL: '1'
-          SAFARI_FORCE_COMPAT: '1'
         run: node tests/safari-macos.browser.cjs
+      - name: Save only Safari-verified PLaMo runtime for production
+        uses: actions/upload-artifact@v4
+        with:
+          name: plamo-safari-verified-runtime
+          path: dist/
+          if-no-files-found: error
       - uses: actions/upload-artifact@v4
         if: always()
         with:

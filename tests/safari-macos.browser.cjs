@@ -61,7 +61,7 @@ async function poll(driver,label,cb,ms=90000){
      window.addEventListener('unhandledrejection',e=>window.__browserErrors.push(String(e.reason)));
      const originalInfo=console.info.bind(console);
      console.info=(...args)=>{if(args[0]==='[wllama-probe]')window.__probeStages.push(args.map(String).join(' '));originalInfo(...args);};
-     window.__expectCompat=${forceCompat};
+     window.__expectCompat=true;
      if(${forceCompat}) {
        try{Object.defineProperty(WebAssembly,'Suspending',{configurable:true,value:undefined});}
        catch(e){window.__browserErrors.push('Could not disable JSPI: '+e);}
@@ -102,6 +102,8 @@ async function poll(driver,label,cb,ms=90000){
    },360000);
    console.log('MAC_SAFARI_TRANSLATE',JSON.stringify(translated));
    assert.equal(translated.state,'ready',translated.message);
+   const compatLoaded=await driver.executeScript("return performance.getEntriesByType('resource').some(r=>r.name.includes('/compat/wllama.js'))");
+   assert.ok(compatLoaded,'Production Safari must automatically load local compat/wllama.js');
    assert.match(translated.output,/[ぁ-んァ-ン一-龯]/);
   }
   console.log('PASS native macOS Safari '+(full?'PLaMo 0.8B translation':'local runtime and tiny GGUF inference'));

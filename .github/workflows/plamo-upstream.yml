@@ -7,6 +7,10 @@ on:
       - 'scripts/build-translate.cjs'
       - 'translate/**'
       - 'tests/translate.browser.cjs'
+      - 'tests/safari-macos.browser.cjs'
+      - 'tests/wllama-probe.entry.mjs'
+      - 'scripts/patch-wllama-safari.cjs'
+      - '.github/workflows/plamo-macos-safari.yml'
   workflow_dispatch:
 permissions:
   contents: read
@@ -32,6 +36,12 @@ jobs:
           grep -q 'tokenizer_model == "plamo3"' llama.cpp/src/llama-vocab.cpp
           echo "wllama commit: $(git rev-parse HEAD)"
           echo "llama.cpp commit: $(git -C llama.cpp rev-parse HEAD)"
+      - name: Apply the pinned wllama Safari and abort diagnostics patch
+        run: |
+          node --check scripts/patch-wllama-safari.cjs
+          node scripts/patch-wllama-safari.cjs /tmp/wllama
+          grep -q 'Safari/WebKit can advertise JSPI' /tmp/wllama/src/utils.ts
+          grep -q 'readableMessage.replace' /tmp/wllama/src/worker.ts
       - name: Install upstream build tools
         run: npm ci --prefix /tmp/wllama
       - name: Build latest llama.cpp WebGPU/WASM runtime
@@ -58,7 +68,8 @@ jobs:
           test -s dist/translate/compat/wllama.js
           test -s dist/translate/compat/wllama.wasm
           node tests/translate.test.cjs
-      - name: WebKit iPhone profile / real compatibility runtime smoke test
+      - name: Linux Playwright WebKit diagnostics (OPFS not always available)
+        continue-on-error: true
         run: MOBILE_WEBKIT=1 node tests/wllama-probe.browser.cjs
       - name: Real PLaMo 0.8B GGUF translation on WASM
         env:

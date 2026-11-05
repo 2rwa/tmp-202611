@@ -2,7 +2,7 @@ name: Publish verified PLaMo browser runtime
 on:
   workflow_run:
     workflows:
-      - PLaMo 3-compatible wllama upstream build
+      - Native macOS Safari PLaMo regression
     types:
       - completed
 permissions:
@@ -35,7 +35,7 @@ jobs:
       - name: Get the actual tested PLaMo runtime from upstream workflow
         uses: actions/download-artifact@v4
         with:
-          name: plamo-upstream-runtime-and-e2e
+          name: plamo-safari-verified-runtime
           repository: ${{ github.repository }}
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}

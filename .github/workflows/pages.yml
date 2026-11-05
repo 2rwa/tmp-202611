@@ -61,7 +61,7 @@ jobs:
         run: node tests/translate.browser.cjs
       - name: Verify GitHub Star buttons in Chromium
         run: node tests/github-star.browser.cjs
-      - name: Find latest successfully tested PLaMo runtime
+      - name: Find latest native macOS Safari-verified PLaMo runtime
         id: verified
         env:
           API_TOKEN: ${{ github.token }}
@@ -69,14 +69,14 @@ jobs:
           response=$(curl --fail --silent --show-error --retry 3 \
             -H "Authorization: Bearer $API_TOKEN" \
             -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/plamo-upstream.yml/runs?status=success&per_page=30")
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/plamo-macos-safari.yml/runs?status=success&per_page=30")
           run_id=$(printf '%s' "$response" | jq -r '.workflow_runs[] | select(.head_branch == "main") | .id' | head -n 1)
           test -n "$run_id"
           echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
-      - name: Download tested PLaMo JavaScript and WebAssembly
+      - name: Download native Safari-verified PLaMo JavaScript and WebAssembly
         uses: actions/download-artifact@v4
         with:
-          name: plamo-upstream-runtime-and-e2e
+          name: plamo-safari-verified-runtime
           repository: ${{ github.repository }}
           run-id: ${{ steps.verified.outputs.run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}

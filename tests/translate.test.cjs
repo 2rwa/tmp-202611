@@ -2,7 +2,11 @@
 const assert=require('node:assert/strict');
 (async()=>{
  const {MODEL_FILE,MODEL_REPO,STOP_TOKENS,buildPFML3,parseGlossary}=await import('../translate/prompt.mjs');
- const {getRuntimeAssets}=await import('../translate/runtime-assets.mjs');
+ const {getRuntimeAssets,needsAppleWebKitFallback}=await import('../translate/runtime-assets.mjs');
+ assert.equal(needsAppleWebKitFallback('Mozilla/5.0 (Macintosh) AppleWebKit/605.1.15 Version/27.2 Safari/605.1.15'),true);
+ assert.equal(needsAppleWebKitFallback('Mozilla/5.0 (iPhone) AppleWebKit/605.1.15 CriOS/140.0 Mobile Safari/604.1'),true);
+ assert.equal(needsAppleWebKitFallback('Mozilla/5.0 (iPhone) AppleWebKit/605.1.15 FxiOS/45.0 Mobile Safari/604.1'),true);
+ assert.equal(needsAppleWebKitFallback('Mozilla/5.0 (Macintosh) AppleWebKit/537.36 Chrome/141.0 Safari/537.36'),false);
  const assets=getRuntimeAssets('https://2rwa.github.io/tmp-202611/translate/app.js');
  assert.equal(assets.default,'https://2rwa.github.io/tmp-202611/translate/wasm/wllama.wasm');
  assert.deepEqual(assets.compat,{

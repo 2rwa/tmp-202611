@@ -1,6 +1,6 @@
 import {Wllama} from '@wllama/wllama';
 import {MODEL_FILE,MODEL_REPO,STOP_TOKENS,buildPFML3,parseGlossary} from './prompt.mjs';
-import {getRuntimeAssets} from './runtime-assets.mjs';
+import {getRuntimeAssets,needsAppleWebKitFallback} from './runtime-assets.mjs';
 const el=id=>document.getElementById(id);
 const refs={};
 for(const id of ['status','load','unload','translate','copy','swap','source','result','sourceLang','targetLang','form','context','glossary','backend','progress','progressText','stats']) refs[id]=el(id);

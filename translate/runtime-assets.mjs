@@ -1,4 +1,8 @@
 // Keep native and compatibility runtime resources from the same llama.cpp source build.
+export function needsAppleWebKitFallback(userAgent){
+  return (userAgent.includes('Version/') && userAgent.includes('Safari')) ||
+    (/(iPhone|iPad|iPod)/.test(userAgent) && /AppleWebKit/.test(userAgent));
+}
 export function getRuntimeAssets(moduleURL) {
   const base = new URL('.', moduleURL);
   return {
