@@ -1,0 +1,76 @@
+name: Native macOS Safari PLaMo regression
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/plamo-macos-safari.yml'
+      - 'tests/safari-macos.browser.cjs'
+      - 'tests/wllama-probe.entry.mjs'
+  workflow_run:
+    workflows: ['PLaMo 3-compatible wllama upstream build']
+    types: [completed]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: native-safari-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  safari:
+    # workflow_run also fires for test failures: verify the generated artifact anyway.
+    if: ${{ github.event_name != 'workflow_run' || (github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.head_repository.full_name == github.repository) }}
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: macOS and actual installed Safari version
+        run: |
+          sw_vers
+          /usr/bin/safaridriver --version
+          /usr/bin/safaridriver --enable || sudo /usr/bin/safaridriver --enable
+      - name: Install Selenium (native Safari WebDriver, not Playwright WebKit)
+        run: npm install --no-save --no-package-lock selenium-webdriver@4.36.0
+      - name: Download same-build production and compatibility assets
+        uses: actions/download-artifact@v4
+        with:
+          # For push/manual diagnostics, use the latest failed build that actually
+          # produced both runtimes. workflow_run uses its own build artifact.
+          run-id: ${{ github.event.workflow_run.id || 41979105170 }}
+          name: plamo-upstream-runtime-and-e2e
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+          path: downloaded
+      - name: Assemble actual translator previously built with plamo3-compatible llama.cpp
+        run: |
+          mkdir -p dist
+          if [ -d downloaded/dist/translate ]; then
+            cp -R downloaded/dist/translate dist/translate
+          elif [ -d downloaded/translate ]; then
+            cp -R downloaded/translate dist/translate
+          else
+            find downloaded -maxdepth 5 -type f
+            exit 1
+          fi
+          test -s dist/translate/wllama-probe.js
+          test -s dist/translate/compat/wllama.js
+          test -s dist/translate/compat/wllama.wasm
+          test -s dist/translate/wasm/wllama.wasm
+          cp translate/index.html dist/translate/index.html
+          cp translate/style.css dist/translate/style.css
+          ls -lh dist/translate/compat dist/translate/wasm
+      - name: macOS Safari WebDriver / cache / worker / real tiny GGUF smoke test
+        run: node tests/safari-macos.browser.cjs
+      - name: PLaMo 0.8B real Japanese translation with macOS Safari
+        env:
+          SAFARI_REAL_MODEL: '1'
+        run: node tests/safari-macos.browser.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-safari-proof
+          path: test-artifacts/
+          if-no-files-found: ignore
