@@ -11,7 +11,7 @@
 <button class="primary" id="load">モデルを読み込む</button><button id="unload" disabled>メモリを解放</button></div>
 <progress id="progress" value="0" max="100" aria-label="ダウンロード進捗"></progress>
 <div class="subline"><span id="status" role="status" aria-live="polite" data-state="idle">モデル未読込</span><small id="progressText">待機中</small></div>
-<p class="note">初回にHugging Faceからモデルを取得し、次回はキャッシュを利用します。WebGPUが不安定な環境ではCPU/WASM固定を試してください。</p></section>
+<p class="note">初回にHugging Faceからモデルを取得し、次回はキャッシュを利用します。iPhone/Safariはサイト内の互換版WebAssemblyを利用するため、翻訳が遅くなり、端末の空きメモリによっては動作しない場合があります。</p></section>
 <section class="card" aria-labelledby="translate-title"><div class="heading"><h2 id="translate-title">02 / TRANSLATE</h2><span class="pill neutral">PFML3専用プロンプト</span></div>
 <div class="languages"><label>原文<select id="sourceLang"><option value="en">英語</option><option value="ja">日本語</option></select></label>
 <button id="swap">⇄ 方向を反転</button><label>訳文<select id="targetLang" disabled><option value="ja">日本語</option><option value="en">英語</option></select></label></div>

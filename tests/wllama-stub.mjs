@@ -1,5 +1,8 @@
 export class Wllama {
  constructor(paths){if(!paths.default.includes('wllama.wasm'))throw Error('bad WASM path');}
+ setCompat(config){
+  if(!config.worker.endsWith('/compat/wllama.js')||!config.wasm.endsWith('/compat/wllama.wasm')||config.worker.includes('jsdelivr'))throw Error('wrong Safari compat assets');
+ }
  async loadModelFromHF(model,options){
   if(model.repo!=='pfnet/plamo-3-translate-0.8b-GGUF')throw Error('unexpected model');
   if(!model.file.endsWith('-Q4_K_M.gguf'))throw Error('unexpected GGUF');

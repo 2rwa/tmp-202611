@@ -1,5 +1,6 @@
 import {Wllama} from '@wllama/wllama';
 import {MODEL_FILE,MODEL_REPO,STOP_TOKENS,buildPFML3,parseGlossary} from './prompt.mjs';
+import {getRuntimeAssets} from './runtime-assets.mjs';
 const el=id=>document.getElementById(id);
 const refs={};
 for(const id of ['status','load','unload','translate','copy','swap','source','result','sourceLang','targetLang','form','context','glossary','backend','progress','progressText','stats']) refs[id]=el(id);
@@ -47,7 +48,10 @@ refs.load.addEventListener('click',async()=>{
  backend=gpu?'WebGPU要求':'WASM / CPU';
  announce('loading','モデルを取得・初期化中（約570 MB / '+backend+'）');
  try{
-  model=new Wllama({default:new URL('./wasm/wllama.wasm',import.meta.url).href},{allowOffline:true,logger});
+  const assets=getRuntimeAssets(import.meta.url);
+  model=new Wllama({default:assets.default},{allowOffline:true,logger});
+  // Safari/iPhone without JSPI or Memory64 needs a matching locally built 32-bit runtime.
+  model.setCompat(assets.compat);
   await model.loadModelFromHF({repo:MODEL_REPO,file:MODEL_FILE},{
    n_ctx:2048,n_threads:1,n_gpu_layers:gpu?99:0,useCache:true,
    progressCallback:({loaded:bytes,total})=>{

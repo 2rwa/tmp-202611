@@ -68,3 +68,14 @@ REAL_MODEL=1 node tests/translate.browser.cjs
 ```
 
 `.github/workflows/plamo-browser.yml` automates the PFML3 unit check, mock Chromium UI regression, WebGPU SwiftShader probe, and a separate **real 0.8B GGUF CPU/WASM inference** job. A successful mock UI test does **not** demonstrate real model inference or compatibility. The Pages workflow also checks the production bundle and preserves all five existing games.
+
+### Safari / iPhone compatibility runtime
+
+The PLaMo-3-compatible wllama runtime must ship **two** worker/WASM pairs generated from the same pinned llama.cpp source:
+
+- `dist/translate/wasm/wllama.wasm` — standard JSPI/Memory64 runtime
+- `dist/translate/compat/wllama.js` and `dist/translate/compat/wllama.wasm` — Safari/iOS fallback (32-bit memory, compatible worker)
+
+`translate/runtime-assets.mjs` derives same-origin URLs from the loaded module; `translate/app.js` calls `model.setCompat(assets.compat)` before loading the model. There must be **no** request for `@wllama/wllama-compat` at jsDelivr. The builder fails if a matching compatibility pair is missing.
+
+`.github/workflows/plamo-upstream.yml` compiles both pairs using the same pinned upstream source, checks their presence, and tests the compat worker in a Playwright WebKit iPhone device profile using a small real GGUF model, then verifies the real PLaMo model in Chromium. This is not an on-device iOS Safari test: memory pressure and hardware performance require physical-device testing. Both Pages pipelines reject artifacts lacking the compatibility assets.

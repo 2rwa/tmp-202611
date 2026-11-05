@@ -58,6 +58,8 @@ jobs:
           test -s dist/translate/index.html
           test -s dist/translate/app.js
           test -s dist/translate/wasm/wllama.wasm
+          test -s dist/translate/compat/wllama.js
+          test -s dist/translate/compat/wllama.wasm
           touch dist/.nojekyll
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4

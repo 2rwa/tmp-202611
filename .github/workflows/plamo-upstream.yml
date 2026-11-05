@@ -35,26 +35,31 @@ jobs:
       - name: Install upstream build tools
         run: npm ci --prefix /tmp/wllama
       - name: Build latest llama.cpp WebGPU/WASM runtime
-        env:
-          SKIP_COMPAT: '1'
         run: |
           cd /tmp/wllama
           npm run build:wasm
           npm run build
           test -s src/wasm/wllama.wasm
+          test -s compat/wasm/wllama.js
+          test -s compat/wasm/wllama.wasm
           test -s esm/index.js
-          ls -lh src/wasm/wllama.wasm esm/index.js
+          ls -lh src/wasm/wllama.wasm compat/wasm/wllama.js compat/wasm/wllama.wasm esm/index.js
       - name: Install Playwright and build dependencies
         run: |
           npm install --no-save --no-package-lock esbuild@0.25.12 playwright@1.56.1
-          npx playwright install --with-deps chromium
+          npx playwright install --with-deps chromium webkit
       - name: Build browser app against matching upstream JavaScript and WASM
         env:
           WLLAMA_UPSTREAM_DIR: /tmp/wllama
         run: |
-          node scripts/build-translate.cjs
+          node scripts/build-translate.cjs --probe
           test -s dist/translate/app.js
           test -s dist/translate/wasm/wllama.wasm
+          test -s dist/translate/compat/wllama.js
+          test -s dist/translate/compat/wllama.wasm
+          node tests/translate.test.cjs
+      - name: WebKit iPhone profile / real compatibility runtime smoke test
+        run: MOBILE_WEBKIT=1 node tests/wllama-probe.browser.cjs
       - name: Real PLaMo 0.8B GGUF translation on WASM
         env:
           REAL_MODEL: '1'

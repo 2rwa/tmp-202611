@@ -1,4 +1,5 @@
 import { Wllama } from '@wllama/wllama';
+import {getRuntimeAssets} from '../translate/runtime-assets.mjs';
 
 globalThis.__wllamaProbe = (async () => {
   const events = [];
@@ -6,9 +7,22 @@ globalThis.__wllamaProbe = (async () => {
     events.push({stage, info: String(info)});
     console.info('[wllama-probe]', stage, info);
   };
-  const w = new Wllama({default: new URL('./wasm/wllama.wasm', import.meta.url).href},
-    {allowOffline: false});
+  const assets=getRuntimeAssets(import.meta.url);
+  const w = new Wllama({default:assets.default},{allowOffline:false});
+  w.setCompat(assets.compat);
+  const resources=w.getWorkerResources();
   try {
+    mark('runtime', JSON.stringify({
+      compat:resources.compat,
+      wasmPath:resources.wasmPath,
+      jsPath:resources.jsPath,
+    }));
+    if(globalThis.__expectCompat && !resources.compat){
+      throw Error('iPhone/WebKit must select compat runtime');
+    }
+    if(resources.compat && (!resources.jsPath.endsWith('/compat/wllama.js') || !resources.wasmPath.endsWith('/compat/wllama.wasm'))){
+      throw Error('Compat runtime is not served from the tested same-origin build');
+    }
     mark('init');
     await w.loadModelFromHF({repo:'ggml-org/models',file:'tinyllamas/stories15M-q4_0.gguf'},{
       n_ctx:256, n_threads:1, n_gpu_layers:0, n_batch:64,

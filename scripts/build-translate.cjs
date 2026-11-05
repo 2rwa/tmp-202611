@@ -29,6 +29,19 @@ if(mock){
   if(!fs.existsSync(src))throw Error('wllama binary missing: '+src);
   fs.mkdirSync(path.join(out,'wasm'),{recursive:true});
   fs.copyFileSync(src,path.join(out,'wasm/wllama.wasm'));
+
+  if(upstream){
+   const compatDir=path.resolve(upstream,'compat/wasm');
+   for(const file of ['wllama.js','wllama.wasm']){
+    const input=path.join(compatDir,file);
+    if(!fs.existsSync(input))throw Error('PLaMo-compatible Safari runtime missing: '+input);
+    const dest=path.join(out,'compat',file);
+    fs.mkdirSync(path.dirname(dest),{recursive:true});
+    fs.copyFileSync(input,dest);
+    if(fs.statSync(dest).size===0)throw Error('Empty Safari runtime asset: '+dest);
+    console.log('Safari-compatible runtime:',file,fs.statSync(dest).size,'bytes');
+   }
+  }
   console.log('Real inference bundle, WASM bytes:',fs.statSync(src).size,upstream?'source build':'npm release');
  }else{
   console.log('Mock inference bundle (UI tests only)');

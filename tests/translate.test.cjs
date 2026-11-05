@@ -2,6 +2,14 @@
 const assert=require('node:assert/strict');
 (async()=>{
  const {MODEL_FILE,MODEL_REPO,STOP_TOKENS,buildPFML3,parseGlossary}=await import('../translate/prompt.mjs');
+ const {getRuntimeAssets}=await import('../translate/runtime-assets.mjs');
+ const assets=getRuntimeAssets('https://2rwa.github.io/tmp-202611/translate/app.js');
+ assert.equal(assets.default,'https://2rwa.github.io/tmp-202611/translate/wasm/wllama.wasm');
+ assert.deepEqual(assets.compat,{
+  worker:'https://2rwa.github.io/tmp-202611/translate/compat/wllama.js',
+  wasm:'https://2rwa.github.io/tmp-202611/translate/compat/wllama.wasm'
+ });
+ assert.ok(!JSON.stringify(assets).includes('cdn.jsdelivr.net'));
  assert.equal(MODEL_REPO,'pfnet/plamo-3-translate-0.8b-GGUF');
  assert.equal(MODEL_FILE,'plamo-3-translate-0.8b-Q4_K_M.gguf');
  assert.deepEqual(STOP_TOKENS,['<|plamo:tag|>','<|plamo:bos|>']);
