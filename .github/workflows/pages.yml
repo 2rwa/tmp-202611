@@ -70,10 +70,26 @@ jobs:
             -H "Authorization: Bearer $API_TOKEN" \
             -H "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/plamo-macos-safari.yml/runs?status=success&per_page=30")
-          run_id=$(printf '%s' "$response" | jq -r '.workflow_runs[] | select(.head_branch == "main") | .id' | head -n 1)
-          test -n "$run_id"
-          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          run_id=''
+          for candidate in $(printf '%s' "$response" | jq -r '.workflow_runs[] | select(.head_branch == "main") | .id'); do
+            artifacts=$(curl --fail --silent --show-error --retry 3 \
+              -H "Authorization: Bearer $API_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${candidate}/artifacts")
+            if printf '%s' "$artifacts" | jq -e '.artifacts[] | select(.name == "plamo-safari-verified-runtime" and .expired == false)' >/dev/null; then
+              run_id=$candidate
+              break
+            fi
+          done
+          if [ -z "$run_id" ]; then
+            echo 'No native Safari-verified runtime exists yet; preserve current Pages deployment.'
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=true" >> "$GITHUB_OUTPUT"
+            echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          fi
       - name: Download native Safari-verified PLaMo JavaScript and WebAssembly
+        if: steps.verified.outputs.available == 'true'
         uses: actions/download-artifact@v4
         with:
           name: plamo-safari-verified-runtime
@@ -89,6 +105,7 @@ jobs:
           path: test-artifacts/
           if-no-files-found: ignore
       - name: Prepare static site
+        if: steps.verified.outputs.available == 'true'
         run: |
           mkdir -p dist
           cp index.html dist/index.html
@@ -108,6 +125,7 @@ jobs:
           # Keep the tested JavaScript/WASM, but use the current page UI and Star button.
           cp translate/index.html dist/translate/index.html
           cp translate/style.css dist/translate/style.css
+          sed -i "s|src=\"./app.js\"|src=\"./app.js?v=${GITHUB_SHA}\"|" dist/translate/index.html
           grep -q 'class="github-button"' dist/index.html
           grep -q 'class="github-button"' dist/translate/index.html
           test -s dist/games/v5-orbit.html
@@ -120,9 +138,12 @@ jobs:
           test -s dist/translate/compat/wllama.js
           test -s dist/translate/compat/wllama.wasm
       - uses: actions/configure-pages@v5
+        if: steps.verified.outputs.available == 'true'
       - uses: actions/upload-pages-artifact@v4
+        if: steps.verified.outputs.available == 'true'
         with:
           path: dist
       - name: Deploy to GitHub Pages
+        if: steps.verified.outputs.available == 'true'
         id: deployment
         uses: actions/deploy-pages@v4

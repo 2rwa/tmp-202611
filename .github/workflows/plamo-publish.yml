@@ -55,6 +55,7 @@ jobs:
             find downloaded -maxdepth 4 -type f
             exit 1
           fi
+          sed -i "s|src=\"./app.js\"|src=\"./app.js?v=${GITHUB_SHA}\"|" dist/translate/index.html
           test -s dist/translate/index.html
           test -s dist/translate/app.js
           test -s dist/translate/wasm/wllama.wasm
