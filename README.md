@@ -92,3 +92,9 @@ The PLaMo-3-compatible wllama runtime must ship **two** worker/WASM pairs genera
 - **Source:** `games/v6-orbit.html` plus `orbit/v6-*`; v5 source files are unchanged.
 - **Tests:** `node tests/orbit-v6.test.cjs`; `node tests/orbit-v6.browser.cjs` (Playwright Chromium). The Pages workflow includes both suites.
 - **Isolated Pages smoke-test copy:** https://2rwa.github.io/hello-world-pages/orbit-v6-test/games/v6-orbit.html
+
+## V6 fullscreen HUD and endgame compression
+
+- Fullscreen targets `#game-shell` (HUD, energy, buttons, status and canvas), not the canvas alone. Desktop and mobile preserve SCORE, BEST, STAGE, LIVES, COMBO and ENERGY while hiding share/intro content. The gameplay surface fills the remaining viewport and centers the arena using a stage-aware scale (square arenas receive a wider view to avoid clipping); pointer mapping uses the same transform.
+- When fewer than 10 targets remain, the arena gradually closes in. Scale goals are 97% at 9 remaining down to 73% at 1 remaining; smoothing is time-based, not an abrupt resize. Target count increases from splits do not reverse the shrink. The ball, target positions, paddle radius, collision wall and drawn shell shrink together; ball speed stays constant, increasing attack frequency. Each new stage resets the arena to full size.
+- The fullscreen exit control remains visible alongside the HUD; game-over result capture preserves image aspect ratio. Dedicated Node and Chromium tests exercise the shrinking physics and both desktop/mobile fullscreen.

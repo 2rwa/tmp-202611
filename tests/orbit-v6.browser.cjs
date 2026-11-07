@@ -37,6 +37,7 @@ const {chromium}=require('playwright');
  console.log('PASS stage-specific target variants and outer shapes render');
  await page.locator('#fullscreen').click();
  await page.waitForFunction(()=>!!document.fullscreenElement||document.body.classList.contains('v6-immersive'));
+ await page.waitForFunction(()=>window.__orbitV6Test.inspect().viewport.full);
  const full=await page.evaluate(()=>!!document.fullscreenElement||document.body.classList.contains('v6-immersive'));
  assert.ok(full,'fullscreen or supported immersive fallback');
  assert.equal(await page.locator('#fullscreen').getAttribute('aria-pressed'),'true');
@@ -65,9 +66,24 @@ const {chromium}=require('playwright');
  assert.ok(Math.abs(Math.atan2(Math.sin(paddle),Math.cos(paddle)))<.1,'pointer maps correctly after zoom');
  await page.locator('#fullscreen-exit').click();
  await page.waitForFunction(()=>!document.fullscreenElement&&!document.body.classList.contains('v6-immersive'));
+ await page.waitForFunction(()=>!window.__orbitV6Test.inspect().viewport.full);
  const exited=await page.evaluate(()=>!document.fullscreenElement&&!document.body.classList.contains('v6-immersive'));
  assert.ok(exited,'in-arena close button must exit fullscreen');
- console.log('PASS fullscreen HUD, fit-to-screen shell and pointer alignment');
+ // Mobile viewport must retain readable HUD without cutting off the shell.
+ await page.setViewportSize({width:390,height:844});
+ await page.locator('#fullscreen').click();
+ await page.waitForFunction(()=>window.__orbitV6Test.inspect().viewport.full);
+ for(const id of ['score','best','level','lives','combo','energy']){
+  assert.ok(await page.locator('#'+id).isVisible(),'mobile fullscreen '+id);
+ }
+ const mobile=await page.evaluate(()=>window.__orbitV6Test.inspect().viewport);
+ assert.ok(mobile.width>0&&mobile.height>0&&mobile.scale>.1);
+ assert.ok(516*mobile.scale/Math.min(mobile.width,mobile.height)>.82);
+ await page.screenshot({path:'test-artifacts/orbit-v6-mobile-fullscreen.png'});
+ await page.locator('#fullscreen-exit').click();
+ await page.waitForFunction(()=>!window.__orbitV6Test.inspect().viewport.full);
+ await page.setViewportSize({width:1120,height:900});
+ console.log('PASS desktop/mobile fullscreen HUD, fit-to-screen shell and pointer alignment');
  await page.evaluate(()=>{
   const a=window.__orbitV6Test;a.setStage(4);
   a.setTargets(Array.from({length:9},(_,i)=>({id:i,kind:'circle',x:380+(i%3)*20,y:280+Math.floor(i/3)*20,r:7,
