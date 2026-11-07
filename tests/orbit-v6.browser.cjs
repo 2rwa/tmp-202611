@@ -94,8 +94,19 @@ const {chromium}=require('playwright');
  assert.ok(shrunk.arenaScale<.976&&shrunk.arenaScale>.95,'nine targets should shrink smoothly');
  await page.screenshot({path:'test-artifacts/orbit-v6-endgame-shrink.png'});
  console.log('PASS endgame shrink renders at realistic target count');
+ // Clipboard.writeText is async and permission-dependent on file://.
+ // Test the UI transition after real async completion, not immediately on click.
+ await page.evaluate(()=>{
+  Object.defineProperty(navigator,'clipboard',{configurable:true,value:{
+   writeText:async value=>{
+    await new Promise(resolve=>setTimeout(resolve,80));
+    window.__orbitCopiedURL=value;
+   }
+  }});
+ });
  await page.locator('#copy-link').click();
- assert.ok((await page.locator('#share-status').innerText()).includes('リンク'));
+ await page.waitForFunction(()=>document.getElementById('share-status').textContent==='ゲームのリンクをコピーしました');
+ assert.equal(await page.evaluate(()=>window.__orbitCopiedURL),'https://2rwa.github.io/tmp-202611/games/v6-orbit.html');
  const qr=await page.locator('.qr-content img').getAttribute('src');
  assert.ok(qr.includes('v6-orbit.html'));
  assert.equal(await page.locator('.star-link').getAttribute('href'),'https://github.com/2rwa/tmp-202611');
