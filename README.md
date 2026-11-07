@@ -1,6 +1,6 @@
 # NEON BREAK LAB — tmp-202611
 
-Temporary GitHub Pages playground and archive for five successive iterations of the same brick-breaking game.
+Temporary GitHub Pages playground and archive for six successive iterations of the same brick-breaking game.
 
 ## Play
 
@@ -10,9 +10,9 @@ Temporary GitHub Pages playground and archive for five successive iterations of 
 - [v3 — rotated triangles, scattered blocks, paddle correction](https://2rwa.github.io/tmp-202611/games/v3-reflections.html)
 - [v4 — fixed game-speed rules](https://2rwa.github.io/tmp-202611/games/v4-speed.html)
 
-- [v5 — ORBIT BREAK circular arena, drifting targets and one-sided paddle (latest)](https://2rwa.github.io/tmp-202611/games/v5-orbit.html)
+- [v5 — ORBIT BREAK circular arena, drifting targets and a two-sided paddle](https://2rwa.github.io/tmp-202611/games/v5-orbit.html)
 
-The first four versions are the original conversation-generated standalone HTML snapshot. Old versions deliberately retain their historical collision and speed quirks; v5 is the latest gameplay experiment.
+- [v6 — COMBO & MORPH: easier stages 4+, bonus lives, expanding/splitting targets, shape-changing arena](https://2rwa.github.io/tmp-202611/games/v6-orbit.html)\n\nThe first four versions are the original conversation-generated standalone HTML snapshot. Old versions deliberately retain their historical collision and speed quirks; v6 is the current gameplay experiment; v5 remains available unchanged.
 
 ## Build and test
 
@@ -67,7 +67,7 @@ node scripts/build-translate.cjs
 REAL_MODEL=1 node tests/translate.browser.cjs
 ```
 
-`.github/workflows/plamo-browser.yml` automates the PFML3 unit check, mock Chromium UI regression, WebGPU SwiftShader probe, and a separate **real 0.8B GGUF CPU/WASM inference** job. A successful mock UI test does **not** demonstrate real model inference or compatibility. The Pages workflow also checks the production bundle and preserves all five existing games.
+`.github/workflows/plamo-browser.yml` automates the PFML3 unit check, mock Chromium UI regression, WebGPU SwiftShader probe, and a separate **real 0.8B GGUF CPU/WASM inference** job. A successful mock UI test does **not** demonstrate real model inference or compatibility. The Pages workflow also checks the production bundle and preserves all six existing games.
 
 ### Safari / iPhone compatibility runtime
 

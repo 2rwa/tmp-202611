@@ -47,12 +47,15 @@ jobs:
         run: |
           node tests/orbit.test.cjs
           node tests/orbit-paddle.test.cjs
+          node tests/orbit-v6.test.cjs
       - name: Install headless Chromium
         run: |
           npm install --no-save --no-package-lock playwright@1.56.1 esbuild@0.25.12 @wllama/wllama@3.8.1
           npx playwright install --with-deps chromium
       - name: Test UI and real gameplay in Chromium
-        run: node tests/orbit.browser.cjs
+        run: |
+          node tests/orbit.browser.cjs
+          node tests/orbit-v6.browser.cjs
       - name: Test PFML3 prompts and glossary
         run: node tests/translate.test.cjs
       - name: Build translator regression bundle
@@ -129,6 +132,8 @@ jobs:
           grep -q 'class="github-button"' dist/index.html
           grep -q 'class="github-button"' dist/translate/index.html
           test -s dist/games/v5-orbit.html
+          test -s dist/games/v6-orbit.html
+          test -s dist/orbit/v6-physics.js
           test -s dist/orbit/physics.js
           touch dist/.nojekyll
           test -s dist/games/v1-classic.html

@@ -13,9 +13,9 @@ const {chromium}=require('playwright');
  fs.mkdirSync('test-artifacts',{recursive:true});
  await page.goto(open('index.html'));
  await page.locator('a.tile[href="games/v5-orbit.html"]').waitFor();
- assert.equal(await page.locator('a.tile[href^="games/"]').count(),5,'index must list exactly five games');
+ assert.equal(await page.locator('a.tile[href^="games/"]').count(),6,'index must list six games');
  await page.screenshot({path:'test-artifacts/orbit-gallery.png'});
- console.log('PASS gallery has five clickable entries');
+ console.log('PASS gallery has six clickable entries');
  for(const name of ['v1-classic','v2-shapes','v3-reflections','v4-speed']){
    await page.goto(open('games/'+name+'.html'));
    await page.locator('canvas').waitFor();
