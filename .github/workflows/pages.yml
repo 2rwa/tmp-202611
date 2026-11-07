@@ -56,6 +56,7 @@ jobs:
         run: |
           node tests/orbit.browser.cjs
           node tests/orbit-v6.browser.cjs
+          node tests/orbit-v6-stages.browser.cjs
       - name: Test PFML3 prompts and glossary
         run: node tests/translate.test.cjs
       - name: Build translator regression bundle

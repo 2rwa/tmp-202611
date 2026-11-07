@@ -120,4 +120,23 @@ check('shrunk circle, star, square and morph still reflect the ball and repositi
   assert.equal(g.energy,F.ENERGY_MAX);
  }
 });
+check('selected-stage reset starts clean and game-over retry returns to selection',()=>{
+ const e=make(4),g=e.world;
+ e.reset(9);
+ assert.equal(g.startingLevel,9);
+ assert.equal(g.level,9);assert.equal(g.state,'ready');
+ assert.equal(g.lives,3);assert.equal(g.score,0);
+ assert.ok(g.targets.some(t=>t.variant==='split'));
+ e.start();
+ g.score=700;g.lives=1;e.loseLife();
+ assert.equal(g.state,'gameover');
+ e.start();
+ assert.equal(g.level,9);assert.equal(g.startingLevel,9);
+ assert.equal(g.state,'playing');assert.equal(g.score,0);assert.equal(g.lives,3);
+ e.reset();
+ assert.equal(g.level,9);assert.equal(g.state,'ready');
+ e.reset(1);
+ assert.equal(g.level,1);assert.equal(g.startingLevel,1);
+ assert.deepEqual(F.spawnTargets(1,20261104),Old.spawnTargets(1,20261104));
+});
 console.log('ALL '+checks+' ORBIT V6 PHYSICS TESTS PASSED');

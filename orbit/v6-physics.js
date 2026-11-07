@@ -102,8 +102,9 @@ g.nextTargetId=10000+g.level*1000;V.newStage(g);
 placeBall();
 emit('level',{level:g.level});
 }
-function reset(){
-g.level=1;g.score=0;g.lives=3;g.state='ready';g.elapsed=0;
+function reset(stage=g.startingLevel||1){
+if(!Number.isSafeInteger(stage)||stage<1)throw RangeError('Invalid stage');
+g.startingLevel=stage;g.level=stage;g.score=0;g.lives=3;g.state='ready';g.elapsed=0;
 g.wallHits=0;g.frontHits=0;g.rearHits=0;g.destroyed=0;
 g.paddleObjectHits=0;g.chargedHits=0;
 g.paddleAngle=Math.PI/2;g.paddleOmega=0;g.events=[];V.reset(g);newLevel();

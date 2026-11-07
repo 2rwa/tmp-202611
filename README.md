@@ -12,7 +12,9 @@ Temporary GitHub Pages playground and archive for six successive iterations of t
 
 - [v5 — ORBIT BREAK circular arena, drifting targets and a two-sided paddle](https://2rwa.github.io/tmp-202611/games/v5-orbit.html)
 
-- [v6 — COMBO & MORPH: easier stages 4+, bonus lives, expanding/splitting targets, shape-changing arena](https://2rwa.github.io/tmp-202611/games/v6-orbit.html)\n\nThe first four versions are the original conversation-generated standalone HTML snapshot. Old versions deliberately retain their historical collision and speed quirks; v6 is the current gameplay experiment; v5 remains available unchanged.
+- [v6 — COMBO & MORPH: easier stages 4+, bonus lives, expanding/splitting targets, shape-changing arena](https://2rwa.github.io/tmp-202611/games/v6-orbit.html)
+
+The first four versions are the original conversation-generated standalone HTML snapshot. Old versions deliberately retain their historical collision and speed quirks; v6 is the current gameplay experiment; v5 remains available unchanged.
 
 ## Build and test
 
@@ -91,10 +93,16 @@ The PLaMo-3-compatible wllama runtime must ship **two** worker/WASM pairs genera
 - **Sharing:** native share with URL-copy fallback, an opt-in QR image supplied by a third-party QR generator, repository Star link, and fullscreen with an in-arena mobile close button. After GAME OVER, export PNG showing the final stage, score, max combo and arena image.
 - **Source:** `games/v6-orbit.html` plus `orbit/v6-*`; v5 source files are unchanged.
 - **Tests:** `node tests/orbit-v6.test.cjs`; `node tests/orbit-v6.browser.cjs` (Playwright Chromium). The Pages workflow includes both suites.
-- **Isolated Pages smoke-test copy:** https://2rwa.github.io/hello-world-pages/orbit-v6-test/games/v6-orbit.html
 
 ## V6 fullscreen HUD and endgame compression
 
 - Fullscreen targets `#game-shell` (HUD, energy, buttons, status and canvas), not the canvas alone. Desktop and mobile preserve SCORE, BEST, STAGE, LIVES, COMBO and ENERGY while hiding share/intro content. The gameplay surface fills the remaining viewport and centers the arena using a stage-aware scale (square arenas receive a wider view to avoid clipping); pointer mapping uses the same transform.
 - When fewer than 10 targets remain, the arena gradually closes in. Scale goals are 97% at 9 remaining down to 73% at 1 remaining; smoothing is time-based, not an abrupt resize. Target count increases from splits do not reverse the shrink. The ball, target positions, paddle radius, collision wall and drawn shell shrink together; ball speed stays constant, increasing attack frequency. Each new stage resets the arena to full size.
 - The fullscreen exit control remains visible alongside the HUD; game-over result capture preserves image aspect ratio. Dedicated Node and Chromium tests exercise the shrinking physics and both desktop/mobile fullscreen.
+
+## V6 stage selection
+
+- **ステージ選択** opens the replay picker, including in fullscreen. Cleared stages are marked **CLEAR**; the next unlocked stage is **NEXT**. Future stages stay locked.
+- Completing Stage N unlocks Stage N+1 and retains all earlier clears in browser `localStorage` (`orbitBreakerV6CompletedStage`). Previous gameplay before this feature cannot be restored automatically.
+- A selected stage begins at SCORE 0 / LIVES 3. Reset and GAME OVER retry use that stage. The picker pauses play when opened. Clear progression survives browser reload if storage is enabled.
+- Tests: `tests/orbit-v6.test.cjs` and `tests/orbit-v6-stages.browser.cjs` (local HTTP server + Playwright).

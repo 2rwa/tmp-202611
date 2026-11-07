@@ -63,3 +63,25 @@ button{touch-action:manipulation}
  :is(#game-shell:fullscreen,#game-shell:-webkit-full-screen,body.v6-immersive #game-shell) .energy-caption span{display:none}
  :is(#game-shell:fullscreen,#game-shell:-webkit-full-screen,body.v6-immersive #game-shell) .buttons button{padding:5px 7px}
 }
+
+/* Stage picker is inside the fullscreen shell and works in regular play too. */
+.stage-picker{position:fixed;inset:0;z-index:50;padding:16px;display:flex;align-items:center;justify-content:center;background:#030917e8}
+.stage-picker-content{width:min(620px,100%);max-height:min(88vh,88dvh);overflow:auto;padding:18px;border-radius:18px;border:1px solid #698da8;background:linear-gradient(145deg,#17314a,#091527);box-shadow:0 18px 90px #000d}
+.stage-picker-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.stage-picker-top h2{margin:0;color:#abffec;font-size:1.22rem}
+.stage-picker-top p{margin:5px 0 0;color:#c4d9eb;font-size:.82rem}
+.stage-picker-description{margin:13px 0;color:#abc7dc;font-size:.77rem;line-height:1.6}
+.stage-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(76px,1fr));gap:8px}
+.stage-tile{display:flex;flex-direction:column;justify-content:center;align-items:center;min-height:57px;padding:7px 3px;font-size:.92rem;font-weight:850}
+.stage-tile small{font-size:.59rem;margin-top:3px;letter-spacing:.03em}
+.stage-tile.is-cleared{color:#a4f7df;border-color:#3a978a;background:#145047}
+.stage-tile.is-next{color:#142536;border-color:#ffe5a1;background:#f4cf84}
+.stage-tile.is-next:hover{background:#ffe5aa}
+.stage-tile.is-locked{color:#8495a8;border-color:#33485e;background:#192538;opacity:.55;cursor:not-allowed}
+.stage-tile:disabled:hover{background:#192538}
+#stage-picker-open[aria-expanded="true"]{border-color:#ffe5a1}
+@media(max-width:600px){
+ .stage-picker-content{padding:13px}
+ .stage-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:5px}
+ .stage-tile{min-height:51px}
+}

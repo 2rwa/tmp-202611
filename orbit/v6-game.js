@@ -20,9 +20,12 @@ function snapshot(){
   remaining:world.targets.length,frontHits:world.frontHits,rearHits:world.rearHits,wallHits:world.wallHits,
   energy:world.energy,chargedHits:world.chargedHits,paddleObjectHits:world.paddleObjectHits,damageCooldown:world.damageCooldown,
   speed:Math.hypot(world.ball.vx,world.ball.vy),expectedSpeed:engine.speed(),paddleAngle:world.paddleAngle,
-  ball:{...world.ball},arenaScale:world.arenaScale,shrinkGoal:world.shrinkGoal,viewport:renderer.view(),elapsed:world.elapsed,events:world.events.slice()};
+  ball:{...world.ball},arenaScale:world.arenaScale,shrinkGoal:world.shrinkGoal,viewport:renderer.view(),
+  completedStage:stages.completed(),highestSelectable:stages.completed()+1,startStage:world.startingLevel,
+  elapsed:world.elapsed,events:world.events.slice()};
 }
 function updateHud(){
+ if(world.state==='levelclear')stages.markCleared(world.level);
  if(world.score>best){best=world.score;try{localStorage.setItem('orbitBreakerV6Best',String(best))}catch(_){}}
  ui.score.textContent=world.score.toLocaleString('ja-JP');
  ui.best.textContent=best.toLocaleString('ja-JP');
@@ -44,6 +47,7 @@ function updateHud(){
   ui.finalCombo.textContent=world.bestCombo;
  }
 }
+const stages=root.OrbitV6StageSelector.create({engine,world,refresh:()=>{updateHud();renderer.draw(world);}});
 function begin(){
  engine.start();updateHud();renderer.draw(world);
 }
@@ -72,6 +76,11 @@ canvas.addEventListener('pointercancel',()=>{pointerHeld=false});
 canvas.addEventListener('pointerleave',e=>{if(e.pointerType==='mouse')pointer=null});
 const handled=new Set(['ArrowLeft','ArrowRight','KeyA','KeyD','Space','KeyP','KeyR']);
 root.addEventListener('keydown',e=>{
+ if(stages.isOpen()){
+  if(e.code==='Escape'){e.preventDefault();stages.close();}
+  if(handled.has(e.code))e.preventDefault();
+  return;
+ }
  if(handled.has(e.code))e.preventDefault();
  if(e.code==='ArrowLeft'||e.code==='KeyA'){left=true;pointer=null;}
  if(e.code==='ArrowRight'||e.code==='KeyD'){right=true;pointer=null;}

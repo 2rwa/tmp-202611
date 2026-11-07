@@ -23,17 +23,24 @@
   </div>
  </header>
  <div class="arena-wrap" id="arena-wrap"><button id="fullscreen-exit" class="fullscreen-exit" type="button" aria-label="全画面を終了">× 閉じる</button>
-  <canvas id="arena" width="800" height="600" role="img" aria-label="ORBIT BREAK v6。パドルでボールを充電して的を破壊し、的とパドルの衝突を避けるゲーム。Lv6から膨張、Lv9から分裂する的。Lv12から外殻が変化します。"></canvas>
+  <canvas id="arena" tabindex="0" width="800" height="600" role="img" aria-label="ORBIT BREAK v6。パドルでボールを充電して的を破壊し、的とパドルの衝突を避けるゲーム。Lv6から膨張、Lv9から分裂する的。Lv12から外殻が変化します。"></canvas>
  </div>
  <div class="energy-panel"><div class="energy-caption"><strong>ボールの攻撃エネルギー</strong><span>パドル接触で充電 / 攻撃で消費</span></div><div class="energy-track" role="progressbar" aria-label="ボールのエネルギー" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><span id="energy-fill" style="width:100%"></span></div></div>
  <div class="toolbar">
   <div class="instructions"><span>← → / A D / マウス・タッチ：パドル移動</span><span>SPACE：開始・一時停止 / P：一時停止 / R：リセット</span></div>
-  <div class="buttons"><button class="primary" id="start">スタート</button><button id="pause">一時停止</button><button id="reset">リセット</button><button id="fullscreen" aria-pressed="false">⛶ 全画面</button></div>
+  <div class="buttons"><button class="primary" id="start">スタート</button><button id="pause">一時停止</button><button id="reset">リセット</button><button id="stage-picker-open" aria-haspopup="dialog" aria-controls="stage-picker" aria-expanded="false">ステージ選択</button><button id="fullscreen" aria-pressed="false">⛶ 全画面</button></div>
  </div>
  <div class="info">
   <div class="legend"><span class="cyan">●</span> パドルで充電 <span class="pink">●</span> 的がパドルに当たるとLIFE −1 <span class="gold">●</span> Lv6 膨張 / Lv9 分裂 / Lv12 外殻変化</div>
   <div class="progress">状態 <b id="status">READY</b> <span class="bullet">·</span> 残りターゲット <b id="remaining">0</b></div>
  </div>
+ <section class="stage-picker" id="stage-picker" role="dialog" aria-modal="true" aria-labelledby="stage-picker-heading" hidden>
+  <div class="stage-picker-content">
+   <div class="stage-picker-top"><div><h2 id="stage-picker-heading">ステージ選択</h2><p id="stage-progress">クリアしたステージと次の挑戦ステージを選べます。</p></div><button type="button" id="stage-picker-close" aria-label="ステージ選択を閉じる">× 閉じる</button></div>
+   <p class="stage-picker-description">✓ CLEAR はクリア済み。NEXT は次に挑戦できるステージです。選ぶとスコア0・LIFE3でスタートします。進行状況はこのブラウザに保存されます。</p>
+   <div id="stage-grid" class="stage-grid" aria-label="ステージ一覧"></div>
+  </div>
+ </section>
  <section class="result-panel" id="result" hidden aria-live="polite">
   <div><strong>GAME OVER — 記録</strong><p>最終ステージ <b id="final-stage">1</b> · スコア <b id="final-score">0</b> · 最大コンボ <b id="final-combo">0</b></p></div>
   <button class="primary" id="capture">結果をPNG画像に保存</button>
@@ -53,6 +60,7 @@
 <script src="../orbit/v6-physics.js"></script>
 <script src="../orbit/v6-render.js"></script>
 <script src="../orbit/v6-fullscreen.js"></script>
+<script src="../orbit/v6-stage-select.js"></script>
 <script src="../orbit/v6-game.js"></script>
 </body>
 </html>
