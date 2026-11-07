@@ -163,6 +163,7 @@ jobs:
         if: steps.verified.outputs.available == 'true' || steps.previous_site.outputs.available == 'true'
         with:
           path: dist
+          retention-days: 30
       - name: Deploy to GitHub Pages
         if: steps.verified.outputs.available == 'true' || steps.previous_site.outputs.available == 'true'
         id: deployment

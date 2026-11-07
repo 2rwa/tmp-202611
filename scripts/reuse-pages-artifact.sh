@@ -6,7 +6,7 @@ echo 'available=false' >> "$GITHUB_OUTPUT"
 mkdir -p downloaded/previous-site
 headers=(-H "Authorization: Bearer $API_TOKEN" -H "Accept: application/vnd.github+json")
 runs=$(curl --fail --silent --show-error --retry 3 "${headers[@]}" \
- "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/pages.yml/runs?status=success&per_page=50") || exit 0
+ "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/pages.yml/runs?status=success&per_page=50") || runs='{"workflow_runs":[]}'
 for run_id in $(printf '%s' "$runs" | jq -r '.workflow_runs[] | select(.head_branch=="main") | .id'); do
   artifacts=$(curl --fail --silent --show-error --retry 3 "${headers[@]}" \
     "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/artifacts") || continue
@@ -34,4 +34,26 @@ for run_id in $(printf '%s' "$runs" | jq -r '.workflow_runs[] | select(.head_bra
   rm -rf downloaded/previous-site
   mkdir -p downloaded/previous-site
 done
-echo 'No reusable published Pages artifact found; keep existing Pages deployment unchanged.'
+# Prior Pages artifacts have short retention. Reuse the *currently published*
+# translator as a last resort; do not ship mock JavaScript or mismatched WASM.
+base="https://${GITHUB_REPOSITORY%%/*}.github.io/${GITHUB_REPOSITORY#*/}/translate"
+files=(index.html style.css app.js wasm/wllama.wasm compat/wllama.js compat/wllama.wasm)
+ok=true
+for file in "${files[@]}"; do
+  mkdir -p "downloaded/previous-site/translate/$(dirname "$file")"
+  if ! curl --fail --silent --show-error --location --retry 3 \
+    "$base/$file" -o "downloaded/previous-site/translate/$file"; then
+    ok=false
+    break
+  fi
+  if [ ! -s "downloaded/previous-site/translate/$file" ]; then ok=false; break; fi
+done
+if [ "$ok" = true ] && \
+   grep -q 'github-button' downloaded/previous-site/translate/index.html && \
+   grep -q -E 'wllama|GGUF|plamo' downloaded/previous-site/translate/app.js; then
+  echo 'Preserving currently published translator JS/WASM pair.'
+  echo 'available=true' >> "$GITHUB_OUTPUT"
+  exit 0
+fi
+rm -rf downloaded/previous-site
+echo 'No verified translator runtime found; preserve existing Pages deployment.'
