@@ -79,3 +79,16 @@ The PLaMo-3-compatible wllama runtime must ship **two** worker/WASM pairs genera
 `translate/runtime-assets.mjs` derives same-origin URLs from the loaded module; `translate/app.js` calls `model.setCompat(assets.compat)` before loading the model. There must be **no** request for `@wllama/wllama-compat` at jsDelivr. The builder fails if a matching compatibility pair is missing.
 
 `.github/workflows/plamo-upstream.yml` compiles both pairs using the same pinned upstream source, checks their presence, and tests the compat worker in a Playwright WebKit iPhone device profile using a small real GGUF model, then verifies the real PLaMo model in Chromium. This is not an on-device iOS Safari test: memory pressure and hardware performance require physical-device testing. Both Pages pipelines reject artifacts lacking the compatibility assets.
+
+## V6: COMBO & MORPH (2026-11-07)
+
+- **Stages 1–3:** v5's original target layouts, movement, speed, paddle size and LIFE rules are unchanged. Combo points are additional, but extra LIFE begins at stage 4.
+- **Stage 4+:** slower ball (stage 4: 360 vs v5's 386), 18 targets instead of 25, slower target drift (12–26 vs 24–44 px/s), wider paddle (half-width .36 vs .275 rad), 2.0s damage grace (vs 1.1s).
+- **Combo:** consecutive powered hits within 4 seconds increase scoring by +0.5× per hit, capped at 4×. A 4-hit combo awards one LIFE (+1) **once per stage from stage 4 onward**, capped at 6 LIVES. Reset on level advance.
+- **Stage 6+:** selected expanding circles require 3 powered hits; radius increases twice before the final pop.
+- **Stage 9+:** selected split targets yield two smaller single-hit targets on a powered hit.
+- **Stage 12+:** stage 12 star, stage 13 square, stage 14 star; stage 15+ continuously morphs circle↔star on a 10-second loop. Canvas outline and ball-wall collision both follow the new shape.
+- **Sharing:** native share with URL-copy fallback, an opt-in QR image supplied by a third-party QR generator, repository Star link, and fullscreen with an in-arena mobile close button. After GAME OVER, export PNG showing the final stage, score, max combo and arena image.
+- **Source:** `games/v6-orbit.html` plus `orbit/v6-*`; v5 source files are unchanged.
+- **Tests:** `node tests/orbit-v6.test.cjs`; `node tests/orbit-v6.browser.cjs` (Playwright Chromium). The Pages workflow includes both suites.
+- **Isolated Pages smoke-test copy:** https://2rwa.github.io/hello-world-pages/orbit-v6-test/games/v6-orbit.html
