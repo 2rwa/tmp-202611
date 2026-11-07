@@ -40,11 +40,44 @@ const {chromium}=require('playwright');
  const full=await page.evaluate(()=>!!document.fullscreenElement||document.body.classList.contains('v6-immersive'));
  assert.ok(full,'fullscreen or supported immersive fallback');
  assert.equal(await page.locator('#fullscreen').getAttribute('aria-pressed'),'true');
+ for(const id of ['score','best','level','lives','combo','energy','remaining','status']){
+  assert.ok(await page.locator('#'+id).isVisible(),id+' must remain visible in fullscreen');
+ }
+ const screen=await page.evaluate(()=>{
+  const rect=document.getElementById('arena').getBoundingClientRect();
+  const v=window.__orbitV6Test.inspect().viewport;
+  const c=document.getElementById('arena-wrap').getBoundingClientRect();
+  return {width:rect.width,height:rect.height,arenaWidth:c.width,arenaHeight:c.height,view:v};
+ });
+ assert.ok(screen.view.full,'fullscreen must activate zoomed renderer');
+ assert.ok(Math.abs(screen.width-screen.arenaWidth)<2&&Math.abs(screen.height-screen.arenaHeight)<2);
+ const displayedShell=516*screen.view.scale;
+ assert.ok(displayedShell/Math.min(screen.view.width,screen.view.height)>.82,'outer shell should fill short dimension');
+ assert.ok(displayedShell/Math.min(screen.view.width,screen.view.height)<1.02,'outer shell should not be clipped');
+ const pointer=await page.evaluate(()=>{
+  const canvas=document.getElementById('arena'),rect=canvas.getBoundingClientRect();
+  const v=window.__orbitV6Test.inspect().viewport;
+  return{x:rect.left+(v.tx+590*v.scale)/v.width*rect.width,
+   y:rect.top+(v.ty+300*v.scale)/v.height*rect.height};
+ });
+ await page.mouse.move(pointer.x,pointer.y);
+ const paddle=await page.evaluate(()=>window.__orbitV6Test.inspect().paddleAngle);
+ assert.ok(Math.abs(Math.atan2(Math.sin(paddle),Math.cos(paddle)))<.1,'pointer maps correctly after zoom');
  await page.locator('#fullscreen-exit').click();
  await page.waitForFunction(()=>!document.fullscreenElement&&!document.body.classList.contains('v6-immersive'));
  const exited=await page.evaluate(()=>!document.fullscreenElement&&!document.body.classList.contains('v6-immersive'));
  assert.ok(exited,'in-arena close button must exit fullscreen');
- console.log('PASS fullscreen toggle');
+ console.log('PASS fullscreen HUD, fit-to-screen shell and pointer alignment');
+ await page.evaluate(()=>{
+  const a=window.__orbitV6Test;a.setStage(4);
+  a.setTargets(Array.from({length:9},(_,i)=>({id:i,kind:'circle',x:380+(i%3)*20,y:280+Math.floor(i/3)*20,r:7,
+   vx:0,vy:0,rotation:0,spin:0,hp:1})));
+  a.setEnergy(0);for(let i=0;i<90;i++){a.setEnergy(0);a.tick(.05);}
+ });
+ const shrunk=await page.evaluate(()=>window.__orbitV6Test.inspect());
+ assert.ok(shrunk.arenaScale<.976&&shrunk.arenaScale>.95,'nine targets should shrink smoothly');
+ await page.screenshot({path:'test-artifacts/orbit-v6-endgame-shrink.png'});
+ console.log('PASS endgame shrink renders at realistic target count');
  await page.locator('#copy-link').click();
  assert.ok((await page.locator('#share-status').innerText()).includes('リンク'));
  const qr=await page.locator('.qr-content img').getAttribute('src');

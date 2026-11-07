@@ -79,4 +79,45 @@ check('stage 12 star, 13 square, 15 dynamic circle/star collision surfaces',()=>
   near(Math.hypot(e.world.ball.vx,e.world.ball.vy),s,.002);
  }
 });
+check('late-game shrink starts below ten, eases continuously, and never rebounds after split',()=>{
+ const e=make(4),g=e.world;
+ g.targets=Array.from({length:10},(_,i)=>({...target(i),x:365+i*6,y:300,vx:0,vy:0}));
+ g.energy=0;for(let k=0;k<12;k++)e.tick(.05);
+ near(g.arenaScale,1);
+ g.targets.pop();
+ e.tick(.05);
+ assert.ok(g.arenaScale<1&&g.arenaScale>.99,'first shrink frame must be subtle');
+ for(let k=0;k<120;k++)e.tick(.05);
+ assert.ok(g.arenaScale<.973&&g.arenaScale>.965,'nine targets approaches 97%');
+ const before=g.arenaScale;
+ g.targets=g.targets.slice(0,1);
+ for(let k=0;k<130;k++)e.tick(.05);
+ assert.ok(g.arenaScale<.735&&g.arenaScale>.729,'one target approaches 73%');
+ assert.ok(g.arenaScale<before);
+ g.targets=Array.from({length:12},(_,i)=>({...target(i),x:380,y:300}));
+ for(let k=0;k<40;k++)e.tick(.05);
+ assert.ok(g.arenaScale<=.735,'more targets must never reverse shrinking');
+ e.newLevel();
+ near(g.arenaScale,1);near(g.shrinkGoal,1);
+});
+check('shrunk circle, star, square and morph still reflect the ball and reposition paddle',()=>{
+ for(const level of [2,4,12,13,15]){
+  const e=make(level),g=e.world;
+  g.targets=[{...target(44),x:400,y:300,vx:0,vy:0}];g.energy=0;
+  for(let i=0;i<140;i++)e.tick(.05);
+  assert.ok(g.arenaScale<.74,'shrink target reached '+level);
+  const radius=V.outerRadius(level,g.elapsed,-Math.PI/2,g.arenaScale);
+  const s=e.speed(),p={x:400,y:F.C.y-radius+F.BALL_R+5};
+  e.injectBall(p.x,p.y,0,-s);g.targets=[];e.tick(.045);
+  assert.ok(g.wallHits>=1,'wall reflection level '+level);
+  near(Math.hypot(g.ball.vx,g.ball.vy),s,.01);
+  assert.ok(Math.hypot(g.ball.x-F.C.x,g.ball.y-F.C.y)<radius+2,'ball must remain inside shell');
+  const paddleRadius=F.PADDLE_R*g.arenaScale;
+  e.setPaddleAngle(Math.PI/2);
+  e.injectBall(400,300+paddleRadius-F.PADDLE_THICK/2-F.BALL_R-4,0,s);
+  g.energy=0;const prev=g.frontHits;e.tick(.045);
+  assert.equal(g.frontHits,prev+1,'shrunk paddle must recharge level '+level);
+  assert.equal(g.energy,F.ENERGY_MAX);
+ }
+});
 console.log('ALL '+checks+' ORBIT V6 PHYSICS TESTS PASSED');
