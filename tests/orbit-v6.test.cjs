@@ -82,20 +82,20 @@ check('stage 12 star, 13 square, 15 dynamic circle/star collision surfaces',()=>
 check('late-game shrink starts below ten, eases continuously, and never rebounds after split',()=>{
  const e=make(4),g=e.world;
  g.targets=Array.from({length:10},(_,i)=>({...target(i),x:365+i*6,y:300,vx:0,vy:0}));
- g.energy=0;for(let k=0;k<12;k++)e.tick(.05);
+ g.energy=0;for(let k=0;k<12;k++)V.updateArena(g,.05);
  near(g.arenaScale,1);
  g.targets.pop();
- e.tick(.05);
+ V.updateArena(g,.05);
  assert.ok(g.arenaScale<1&&g.arenaScale>.99,'first shrink frame must be subtle');
- for(let k=0;k<120;k++)e.tick(.05);
+ for(let k=0;k<120;k++)V.updateArena(g,.05);
  assert.ok(g.arenaScale<.973&&g.arenaScale>.965,'nine targets approaches 97%');
  const before=g.arenaScale;
  g.targets=g.targets.slice(0,1);
- for(let k=0;k<130;k++)e.tick(.05);
+ for(let k=0;k<130;k++)V.updateArena(g,.05);
  assert.ok(g.arenaScale<.735&&g.arenaScale>.729,'one target approaches 73%');
  assert.ok(g.arenaScale<before);
  g.targets=Array.from({length:12},(_,i)=>({...target(i),x:380,y:300}));
- for(let k=0;k<40;k++)e.tick(.05);
+ for(let k=0;k<40;k++)V.updateArena(g,.05);
  assert.ok(g.arenaScale<=.735,'more targets must never reverse shrinking');
  e.newLevel();
  near(g.arenaScale,1);near(g.shrinkGoal,1);
@@ -104,7 +104,7 @@ check('shrunk circle, star, square and morph still reflect the ball and repositi
  for(const level of [2,4,12,13,15]){
   const e=make(level),g=e.world;
   g.targets=[{...target(44),x:400,y:300,vx:0,vy:0}];g.energy=0;
-  for(let i=0;i<140;i++)e.tick(.05);
+  for(let i=0;i<140;i++)V.updateArena(g,.05);
   assert.ok(g.arenaScale<.74,'shrink target reached '+level);
   const radius=V.outerRadius(level,g.elapsed,-Math.PI/2,g.arenaScale);
   const s=e.speed(),p={x:400,y:F.C.y-radius+F.BALL_R+5};
