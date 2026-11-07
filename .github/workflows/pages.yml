@@ -100,6 +100,12 @@ jobs:
           run-id: ${{ steps.verified.outputs.run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: downloaded
+      - name: Reuse last successfully published Pages artifact if no Safari runtime is available
+        if: steps.verified.outputs.available != 'true'
+        id: previous_site
+        env:
+          API_TOKEN: ${{ github.token }}
+        run: bash scripts/reuse-pages-artifact.sh
       - name: Save screenshots from real browser
         if: always()
         uses: actions/upload-artifact@v4
@@ -108,27 +114,36 @@ jobs:
           path: test-artifacts/
           if-no-files-found: ignore
       - name: Prepare static site
-        if: steps.verified.outputs.available == 'true'
+        if: steps.verified.outputs.available == 'true' || steps.previous_site.outputs.available == 'true'
+        env:
+          VERIFIED: ${{ steps.verified.outputs.available }}
+          PREVIOUS: ${{ steps.previous_site.outputs.available }}
         run: |
           mkdir -p dist
           cp index.html dist/index.html
           cp -r games dist/games
           cp -r orbit dist/orbit
-          # The mock UI test has already populated dist/translate.
-          # Remove it so the verified model bundle is copied to the correct location.
+          # Preserve the last successfully published translator if native Safari
+          # validation has not produced a new runtime. Never deploy the mock.
           rm -rf dist/translate
-          if [ -d downloaded/dist/translate ]; then
-            cp -r downloaded/dist/translate dist/translate
-          elif [ -d downloaded/translate ]; then
-            cp -r downloaded/translate dist/translate
+          if [ "$VERIFIED" = 'true' ]; then
+            if [ -d downloaded/dist/translate ]; then
+              cp -r downloaded/dist/translate dist/translate
+            elif [ -d downloaded/translate ]; then
+              cp -r downloaded/translate dist/translate
+            else
+              echo 'No verified PLaMo runtime artifact found' >&2
+              exit 1
+            fi
+            cp translate/index.html dist/translate/index.html
+            cp translate/style.css dist/translate/style.css
+            sed -i "s|src=\"./app.js\"|src=\"./app.js?v=${GITHUB_SHA}\"|" dist/translate/index.html
+          elif [ "$PREVIOUS" = 'true' ]; then
+            cp -r downloaded/previous-site/translate dist/translate
           else
-            echo 'No verified PLaMo runtime artifact found' >&2
+            echo 'No safe translator assets available; do not overwrite Pages' >&2
             exit 1
           fi
-          # Keep the tested JavaScript/WASM, but use the current page UI and Star button.
-          cp translate/index.html dist/translate/index.html
-          cp translate/style.css dist/translate/style.css
-          sed -i "s|src=\"./app.js\"|src=\"./app.js?v=${GITHUB_SHA}\"|" dist/translate/index.html
           grep -q 'class="github-button"' dist/index.html
           grep -q 'class="github-button"' dist/translate/index.html
           test -s dist/games/v5-orbit.html
@@ -143,12 +158,12 @@ jobs:
           test -s dist/translate/compat/wllama.js
           test -s dist/translate/compat/wllama.wasm
       - uses: actions/configure-pages@v5
-        if: steps.verified.outputs.available == 'true'
+        if: steps.verified.outputs.available == 'true' || steps.previous_site.outputs.available == 'true'
       - uses: actions/upload-pages-artifact@v4
-        if: steps.verified.outputs.available == 'true'
+        if: steps.verified.outputs.available == 'true' || steps.previous_site.outputs.available == 'true'
         with:
           path: dist
       - name: Deploy to GitHub Pages
-        if: steps.verified.outputs.available == 'true'
+        if: steps.verified.outputs.available == 'true' || steps.previous_site.outputs.available == 'true'
         id: deployment
         uses: actions/deploy-pages@v4
