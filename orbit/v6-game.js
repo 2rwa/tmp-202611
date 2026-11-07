@@ -104,6 +104,7 @@ async function toggleFullscreen(){
  updateFullscreenLabel();
 }
 ui.fullscreen.addEventListener('click',toggleFullscreen);
+document.getElementById('fullscreen-exit').addEventListener('click',toggleFullscreen);
 document.addEventListener('fullscreenchange',updateFullscreenLabel);
 function shareMessage(message){ui.shareStatus.textContent=message;}
 async function copyLink(){

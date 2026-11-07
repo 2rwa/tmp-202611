@@ -27,3 +27,7 @@ button{touch-action:manipulation}
 .arena-wrap:fullscreen canvas,.arena-wrap:-webkit-full-screen canvas,body.v6-immersive .arena-wrap canvas{width:min(100vw,133.333vh);width:min(100vw,133.333dvh);height:auto;max-height:100vh;max-height:100dvh}
 body.v6-immersive .arena-wrap{position:fixed;z-index:1000;inset:0}
 @media(max-width:600px){.share-panel{display:block}.share-actions{margin-top:12px}.result-panel button{margin-left:0}.qr-details[open] .qr-content{right:auto;left:0}}
+
+.arena-wrap{position:relative}
+.fullscreen-exit{display:none;position:absolute;top:12px;right:12px;z-index:4;background:#091727eb;border-color:#9bbbd4}
+.arena-wrap:fullscreen .fullscreen-exit,.arena-wrap:-webkit-full-screen .fullscreen-exit,body.v6-immersive .fullscreen-exit{display:block}
