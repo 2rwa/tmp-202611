@@ -56,6 +56,8 @@ check('combo multiplier grows and stage 4 life bonus triggers only once',()=>{
  assert.equal(e.world.lives,4);assert.ok(e.world.bonusClaimed);
  assert.equal(e.world.events.filter(v=>v.type==='life-bonus').length,1);
  assert.ok(e.world.score>20*e.world.level*5);
+ e.world.targets=[];for(let i=0;i<100;i++)e.tick(.05);
+ assert.equal(e.world.combo,0,'combo expires after four idle seconds');
  e.world.level=5;e.newLevel();assert.equal(e.world.combo,0);
  assert.equal(e.world.bonusClaimed,false);
  const early=make(3);for(let i=0;i<4;i++)hit(early,t,i);
