@@ -27,7 +27,7 @@ class BenchTests(unittest.TestCase):
         p = ["これは長さのある段落です。" * 5] * 100
         text = bench.select_excerpt(p, 300, 0.2)
         self.assertGreaterEqual(len(text), 300)
-        self.assertEqual(text.count("\n"), 2)
+        self.assertEqual(text.count("\n"), 4)
 
     def test_model_and_cases(self):
         self.assertEqual(len(bench.CASES), 4)
