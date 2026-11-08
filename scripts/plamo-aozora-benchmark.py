@@ -264,6 +264,10 @@ def main():
     args = cli.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
 
+    # Start readiness measurement immediately after the server process is spawned,
+    # before any network downloads of the benchmark passages.
+    load_seconds = wait_ready(args.endpoint, args.pid)
+
     source_data = {}
     for key, source in SOURCES.items():
         paragraphs, sha = load_source(source)
@@ -279,7 +283,6 @@ def main():
                       "source": passage, "source_chars": len(passage), "max_tokens": cap})
     (args.output / "cases.json").write_text(json.dumps(cases, ensure_ascii=False, indent=2) + "\n")
 
-    load_seconds = wait_ready(args.endpoint, args.pid)
     sampler = MemorySampler(args.pid)
     sampler.start()
     runs = []
