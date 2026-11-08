@@ -1,0 +1,68 @@
+name: PLaMo 3 Aozora Translation Benchmark
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/plamo-aozora-benchmark.yml'
+      - 'scripts/plamo-aozora-benchmark.py'
+      - 'tests/test_plamo_aozora.py'
+      - 'docs/plamo-aozora-benchmark.md'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  cpu-llama-cpp:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate corpus extraction and benchmark calculations
+        run: python -m unittest discover -s tests -p 'test_plamo_aozora.py' -v
+      - name: Build llama.cpp CPU inference engine
+        run: |
+          git clone --depth 1 https://github.com/ggml-org/llama.cpp.git "$RUNNER_TEMP/llama.cpp"
+          git -C "$RUNNER_TEMP/llama.cpp" rev-parse HEAD | tee llama-cpp-revision.txt
+          cmake -S "$RUNNER_TEMP/llama.cpp" -B "$RUNNER_TEMP/llama-build" -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=OFF -DGGML_OPENMP=ON -DLLAMA_CURL=OFF
+          cmake --build "$RUNNER_TEMP/llama-build" --config Release --target llama-server -j 4
+      - name: Download original PLaMo 3 Translate 0.8B Q4_K_M
+        run: |
+          python -m pip install 'huggingface_hub>=0.34,<2'
+          python - <<'PY'
+          from huggingface_hub import hf_hub_download
+          import os
+          path = hf_hub_download(
+              repo_id="pfnet/plamo-3-translate-0.8b-GGUF",
+              filename="plamo-3-translate-0.8b-Q4_K_M.gguf",
+              local_dir=os.path.join(os.environ["RUNNER_TEMP"], "model"))
+          print(f"model={path}, bytes={os.stat(path).st_size}")
+          PY
+      - name: Run Japanese-to-English translations on Aozora Bunko texts
+        env:
+          OMP_NUM_THREADS: '4'
+        run: |
+          set -euo pipefail
+          mkdir -p test-artifacts/plamo-aozora
+          cp llama-cpp-revision.txt test-artifacts/plamo-aozora/
+          "$RUNNER_TEMP/llama-build/bin/llama-server" \
+            --model "$RUNNER_TEMP/model/plamo-3-translate-0.8b-Q4_K_M.gguf" \
+            --host 127.0.0.1 --port 18088 \
+            --ctx-size 8192 --threads 4 --parallel 1 \
+            --n-gpu-layers 0 --jinja --no-prefill-assistant \
+            > test-artifacts/plamo-aozora/server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          python scripts/plamo-aozora-benchmark.py \
+            --endpoint http://127.0.0.1:18088 \
+            --pid "$server_pid" \
+            --output test-artifacts/plamo-aozora
+          cat test-artifacts/plamo-aozora/results.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: plamo-aozora-cpu-benchmark
+          path: test-artifacts/plamo-aozora/
+          if-no-files-found: warn
+          retention-days: 14
