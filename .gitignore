@@ -1,0 +1,4 @@
+.DS_Store
+geo-mcp/result.json
+geo-mcp/*-output.json
+geo-mcp/*-result.json

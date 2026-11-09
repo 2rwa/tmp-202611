@@ -1,0 +1,95 @@
+name: MLIT Geospatial MCP smoke test
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - geo-mcp/**
+      - tests/geo-mcp.test.cjs
+      - .github/workflows/geo-mcp.yml
+  workflow_dispatch:
+    inputs:
+      live:
+        description: 'Run against official server (requires MLIT_LIBRARY_API_KEY secret)'
+        type: boolean
+        required: true
+        default: false
+      apis:
+        description: 'Comma-separated API IDs (1-8 IDs)'
+        type: string
+        default: '3,5,26'
+      lat:
+        description: Latitude
+        type: string
+        default: '35.5074'
+      lon:
+        description: Longitude
+        type: string
+        default: '139.6176'
+
+permissions:
+  contents: read
+
+jobs:
+  mock:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: MCP protocol, CLI and GeoJSON tests
+        run: node tests/geo-mcp.test.cjs
+      - name: Browser JavaScript syntax
+        run: node --check geo-mcp/app.js
+      - name: Generate synthetic fixture artifact
+        run: python geo-mcp/probe.py --mock --out geo-mcp/mock-output.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: geo-mcp-synthetic-result
+          path: geo-mcp/mock-output.json
+
+  live:
+    if: github.event_name == 'workflow_dispatch' && inputs.live
+    needs: mock
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Require the MLIT key
+        env:
+          LIBRARY_API_KEY: ${{ secrets.MLIT_LIBRARY_API_KEY }}
+        run: |
+          if [ -z "$LIBRARY_API_KEY" ]; then
+            echo 'Missing repository secret MLIT_LIBRARY_API_KEY' >&2
+            exit 1
+          fi
+      - name: Fetch and install upstream alpha server
+        run: |
+          git clone --depth 1 https://github.com/chirikuuka/mlit-geospatial-mcp.git upstream-mlit
+          git -C upstream-mlit rev-parse HEAD
+          python -m pip install -r upstream-mlit/requirements.txt
+      - name: Call get_multi_api over stdio
+        env:
+          LIBRARY_API_KEY: ${{ secrets.MLIT_LIBRARY_API_KEY }}
+          GEO_APIS: ${{ inputs.apis }}
+          GEO_LAT: ${{ inputs.lat }}
+          GEO_LON: ${{ inputs.lon }}
+        run: |
+          python geo-mcp/probe.py \
+            --server upstream-mlit/src/server.py \
+            --lat "$GEO_LAT" --lon "$GEO_LON" --apis "$GEO_APIS" \
+            --out geo-mcp/live-output.json
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: geo-mcp-live-result
+          path: geo-mcp/live-output.json
+          retention-days: 7

@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MLIT GEO / MCP 検証ラボ — tmp-202611</title>
+<meta name="description" content="国土交通省地理空間MCP Serverの応答をGeoJSONとして観察する検証ページ。">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+:root{font-family:system-ui,-apple-system,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;color-scheme:dark;background:#0a1425;color:#eaf4ff}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(circle at 70% 0,#25445c 0,transparent 48%),#0a1425}
+a{color:#85e7d7}main{max-width:1270px;margin:auto;padding:27px clamp(15px,3vw,38px) 50px}
+nav{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;font-size:.82rem;color:#9bb4cb}
+.kicker{color:#86e5d1;font-size:.72rem;letter-spacing:.19em;font-weight:800;margin:29px 0 12px}
+h1{font-size:clamp(1.9rem,4vw,3.6rem);letter-spacing:-.045em;line-height:1.13;margin:0}
+h1 em{font-style:normal;color:#7ee7d8}
+p{line-height:1.72;color:#b5c9dc}.lead{max-width:830px}
+.notice{margin:21px 0;padding:12px 17px;background:#30271b;border:1px solid #7e5c29;border-radius:10px;color:#ffe0ac;font-size:.88rem;line-height:1.65}
+.controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:21px 0}
+button,.picker{font:inherit;font-size:.89rem;font-weight:700;padding:11px 16px;border-radius:11px;cursor:pointer}
+button{background:#1b3548;color:#e8f3ff;border:1px solid #56738e}
+button:hover{background:#28506a}
+.picker{background:#75e5d5;color:#052d31;display:inline-flex;align-items:center;border:1px solid #75e5d5}
+.picker:hover{background:#a9f4e8}.picker input{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden}
+.picker:focus-within{outline:3px solid #ffd791;outline-offset:3px}
+#fileName{font-size:.82rem;color:#a8bfd2}
+.dashboard{display:grid;grid-template-columns:minmax(0,1.8fr) minmax(270px,.8fr);gap:15px}
+.panel{border:1px solid #2c4561;background:#101f33;border-radius:17px;overflow:hidden;min-width:0}
+.panelhead{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:14px 17px;border-bottom:1px solid #2b4159}
+.panelhead strong{font-size:.95rem}.panelhead span{font-size:.78rem;color:#90aec9}
+#map{height:560px;background:#0e2435;z-index:0}
+.leaflet-container{font:inherit}.leaflet-popup-content{color:#1c2a33}.leaflet-popup-content b{display:block;margin-bottom:5px}
+.side{padding:0 18px 20px}.stat{padding:19px 0;border-bottom:1px solid #2a4059}
+.stat small{display:block;color:#8eacc7;letter-spacing:.07em;font-size:.74rem;margin-bottom:8px}
+.stat strong{font-size:1.45rem;line-height:1.15}
+#summary{font-size:.87rem;color:#b8d0e0;line-height:1.75;white-space:pre-wrap}
+details{margin-top:20px;background:#111f33;border:1px solid #304560;border-radius:14px;padding:15px}
+summary{font-weight:750;cursor:pointer}
+pre{max-height:320px;overflow:auto;padding:13px;background:#071427;border-radius:8px;color:#c5d9eb;font-size:.77rem;line-height:1.5}
+.links{display:flex;flex-wrap:wrap;gap:15px;margin:24px 0;font-size:.85rem}
+footer{border-top:1px solid #294057;margin-top:24px;padding-top:16px;color:#91aabd;font-size:.78rem;line-height:1.8}
+@media(max-width:780px){.dashboard{grid-template-columns:1fr}#map{height:430px}.side{padding-bottom:7px}}
+</style>
+</head>
+<body>
+<main>
+<nav><span>2RWA / EXPERIMENTS / GEO MCP</span><a href="../">← 実験トップへ</a></nav>
+<div class="kicker">GOVERNMENT OPEN DATA × MCP × GEOJSON</div>
+<h1>MLIT GEO <em>探索ラボ</em></h1>
+<p class="lead">国土交通省の地理空間MCP Server（α版）が返す地価・用途地域・防災等の地理データを、地図上で検証するための実験画面です。別途PythonクライアントでMCP接続を実行し、生成したJSONファイルを読み込みます。</p>
+<div class="notice" id="modeNotice">現在は<strong>合成サンプル</strong>を表示しています。色や形は動作確認用で、実際の地価・用途地域・浸水リスクを表すものではありません。国交省APIの実データ取得にはAPIキーが必要です。</div>
+<div class="controls">
+<label class="picker">MCP結果のJSONを読み込む<input id="fileInput" type="file" accept=".json,.geojson,application/json"></label>
+<button id="resetButton" type="button">合成サンプルに戻す</button>
+<span id="fileName" aria-live="polite">サンプルモード</span>
+</div>
+<section class="dashboard">
+  <div class="panel">
+    <div class="panelhead"><strong>地理データ表示</strong><span id="mapStatus">読み込み中...</span></div>
+    <div id="map" role="region" aria-label="GeoJSON地図"></div>
+  </div>
+  <div class="panel side">
+    <div class="stat"><small>表示中のモード</small><strong id="mode">MOCK</strong></div>
+    <div class="stat"><small>GeoJSONフィーチャ数</small><strong id="featureCount">0</strong></div>
+    <div class="stat"><small>対象データ・属性</small><p id="summary">合成サンプルの初期化中</p></div>
+    <div class="stat"><small>API番号</small><p id="apiNumbers">3 / 5 / 26</p></div>
+  </div>
+</section>
+<details><summary>読み込んだJSONの先頭を確認</summary><pre id="jsonPreview" aria-label="JSONプレビュー"></pre></details>
+<div class="links">
+ <a href="https://github.com/2rwa/tmp-202611/tree/main/geo-mcp">Python MCPクライアントと実行手順</a>
+ <a href="https://github.com/chirikuuka/mlit-geospatial-mcp">国交省公開のMCPサーバ実装</a>
+ <a href="https://www.reinfolib.mlit.go.jp/api/request/">不動産情報ライブラリAPI利用申請</a>
+ <a id="sourceMap" href="https://www.reinfolib.mlit.go.jp/" hidden rel="noopener noreferrer" target="_blank">元データの地図を開く</a>
+</div>
+<footer>表示：OpenStreetMap タイル / Leaflet。データの出典と取得条件は結果JSONをご確認ください。地図上の点・線・面はGeoJSONを描画するもので、推定や補間をしていません。</footer>
+</main>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="./app.js"></script>
+</body>
+</html>

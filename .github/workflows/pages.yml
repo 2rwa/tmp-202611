@@ -11,6 +11,7 @@ on:
       - tests/**
       - orbit/**
       - translate/**
+      - geo-mcp/**
       - .github/workflows/pages.yml
   workflow_dispatch:
 
@@ -57,6 +58,10 @@ jobs:
           node tests/orbit.browser.cjs
           node tests/orbit-v6.browser.cjs
           node tests/orbit-v6-stages.browser.cjs
+      - name: Test MLIT MCP mock and JS syntax
+        run: |
+          node tests/geo-mcp.test.cjs
+          node --check geo-mcp/app.js
       - name: Test PFML3 prompts and glossary
         run: node tests/translate.test.cjs
       - name: Build translator regression bundle
@@ -124,6 +129,7 @@ jobs:
           cp index.html dist/index.html
           cp -r games dist/games
           cp -r orbit dist/orbit
+          cp -r geo-mcp dist/geo-mcp
           # Preserve the last successfully published translator if native Safari
           # validation has not produced a new runtime. Never deploy the mock.
           rm -rf dist/translate
@@ -155,6 +161,8 @@ jobs:
           test -s dist/games/v1-classic.html
           test -s dist/games/v4-speed.html
           test -s dist/translate/app.js
+          test -s dist/geo-mcp/index.html
+          test -s dist/geo-mcp/app.js
           test -s dist/translate/wasm/wllama.wasm
           test -s dist/translate/compat/wllama.js
           test -s dist/translate/compat/wllama.wasm

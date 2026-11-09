@@ -106,3 +106,11 @@ The PLaMo-3-compatible wllama runtime must ship **two** worker/WASM pairs genera
 - Completing Stage N unlocks Stage N+1 and retains all earlier clears in browser `localStorage` (`orbitBreakerV6CompletedStage`). Previous gameplay before this feature cannot be restored automatically.
 - A selected stage begins at SCORE 0 / LIVES 3. Reset and GAME OVER retry use that stage. The picker pauses play when opened. Clear progression survives browser reload if storage is enabled.
 - Tests: `tests/orbit-v6.test.cjs` and `tests/orbit-v6-stages.browser.cjs` (local HTTP server + Playwright).
+
+## MLIT Geospatial MCP experiment (2026-11-09)
+
+- [Interactive GeoJSON map viewer](https://2rwa.github.io/tmp-202611/geo-mcp/) (synthetic sample by default)
+- [Python MCP stdio probe, offline mock and real API instructions](geo-mcp/README.md)
+- Run offline: `python3 geo-mcp/probe.py --mock --out geo-mcp/result.json`
+- Tests: `node tests/geo-mcp.test.cjs`; optional live workflow uses repository secret `MLIT_LIBRARY_API_KEY`.
+- Generated results and government API credentials are not included in the public Pages deployment.
