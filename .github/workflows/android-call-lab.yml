@@ -10,16 +10,35 @@ permissions:
   contents: read
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
       - name: Install Android SDK components
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+        shell: bash
+        run: |
+          set -eu
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$RUNNER_TEMP/android-sdk}}"
+          mkdir -p "$SDK"
+          if [ -x "$SDK/cmdline-tools/latest/bin/sdkmanager" ]; then
+            MANAGER="$SDK/cmdline-tools/latest/bin/sdkmanager"
+          else
+            curl -fsSL --retry 3 https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -o "$RUNNER_TEMP/android-commandline.zip"
+            unzip -q "$RUNNER_TEMP/android-commandline.zip" -d "$RUNNER_TEMP/android-commandline"
+            mkdir -p "$SDK/cmdline-tools"
+            mv "$RUNNER_TEMP/android-commandline/cmdline-tools" "$SDK/cmdline-tools/latest"
+            MANAGER="$SDK/cmdline-tools/latest/bin/sdkmanager"
+          fi
+          export ANDROID_HOME="$SDK" ANDROID_SDK_ROOT="$SDK"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          set +o pipefail
+          yes | "$MANAGER" --sdk_root="$SDK" --licenses >/dev/null
+          "$MANAGER" --sdk_root="$SDK" "platforms;android-35" "build-tools;35.0.0"
       - name: Build and verify signed test APK
         run: bash android-call-lab/build.sh
       - uses: actions/upload-artifact@v4
