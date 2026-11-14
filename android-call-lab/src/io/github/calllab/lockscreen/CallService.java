@@ -9,12 +9,14 @@ import android.util.Log;
 
 public final class CallService extends Service {
     static final String ARM="io.github.calllab.ARM", RING="io.github.calllab.RING",
-        DIRECT="io.github.calllab.DIRECT", SET_TOKEN="io.github.calllab.SET_TOKEN";
+        DIRECT="io.github.calllab.DIRECT", SET_TOKEN="io.github.calllab.SET_TOKEN", SET_BIND="io.github.calllab.SET_BIND", REBIND="io.github.calllab.REBIND";
     private static final int STANDBY_ID=101, RING_ID=102;
     private MediaSession session;
     private long lastRing;
     private NotificationManager manager;
     private ControlServer control;
+    private PowerManager.WakeLock cpuLock;
+    private android.net.wifi.WifiManager.WifiLock wifiLock;
     private final Handler main = new Handler(Looper.getMainLooper());
     static void start(Context c, String action) {
         Intent i=new Intent(c,CallService.class).setAction(action);
@@ -62,6 +64,13 @@ public final class CallService extends Service {
             .setContentIntent(activity(ARM,101)).setOngoing(true).build());
         String action=intent==null?ARM:intent.getAction();
         if (!getSharedPreferences("calllab", MODE_PRIVATE).getBoolean("armed", false)) { stopSelf(); return START_NOT_STICKY; }
+        if(cpuLock==null){
+            PowerManager pm=(PowerManager)getSystemService(POWER_SERVICE);
+            cpuLock=pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,"CallLab:standby");cpuLock.acquire();
+            android.net.wifi.WifiManager wifi=(android.net.wifi.WifiManager)getApplicationContext().getSystemService(WIFI_SERVICE);
+            if(wifi!=null){wifiLock=wifi.createWifiLock(android.net.wifi.WifiManager.WIFI_MODE_FULL,"CallLab:standby");wifiLock.acquire();}
+        }
+        if(REBIND.equals(action)&&control!=null){control.close();control=null;}
         if (control==null) { control=new ControlServer(this, () -> main.post(() -> ring(true,"tcp"))); control.start(); }
         if(RING.equals(action)||DIRECT.equals(action)) ring(DIRECT.equals(action),"diagnostic");
         return START_STICKY;
@@ -90,6 +99,8 @@ public final class CallService extends Service {
     @Override public void onDestroy() {
         clearRing(this);
         if(control!=null) { control.close(); control=null; }
+        if(wifiLock!=null&&wifiLock.isHeld())wifiLock.release();
+        if(cpuLock!=null&&cpuLock.isHeld())cpuLock.release();
         session.release();
         stopForeground(true);
         super.onDestroy();

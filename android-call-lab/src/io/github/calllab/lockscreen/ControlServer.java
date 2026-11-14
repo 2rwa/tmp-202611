@@ -8,8 +8,11 @@ import java.io.*;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.security.SecureRandom;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 
-/** Loopback-only prototype. Do not expose the plaintext token protocol on LAN. */
+/** Explicitly configured private LAN interface, challenge-authenticated ring. */
 final class ControlServer implements Closeable {
     static final int PORT=18765;
     private final Context context;
@@ -18,6 +21,7 @@ final class ControlServer implements Closeable {
     private volatile ServerSocket listener;
     private volatile Socket client;
     private long lastRing;
+    private final SecureRandom random=new SecureRandom();
     ControlServer(Context c,Runnable r){context=c;ring=r;}
     void start(){
         running=true;
@@ -29,16 +33,26 @@ final class ControlServer implements Closeable {
         try(ServerSocket ss=new ServerSocket()){
             listener=ss;
             ss.setReuseAddress(true);
-            ss.bind(new InetSocketAddress(InetAddress.getByName("127.0.0.1"),PORT),8);
+            String host=context.getSharedPreferences("calllab",Context.MODE_PRIVATE).getString("tcp_bind","127.0.0.1");
+            InetAddress addr=InetAddress.getByName(host);
+            if(!addr.isLoopbackAddress()&&!addr.isSiteLocalAddress())throw new IOException("Private IPv4 or loopback required");
+            ss.bind(new InetSocketAddress(addr,PORT),8);
             if(!running)return;
-            Log.i("CallLab","TCP listening loopback:"+PORT);
+            Log.i("CallLab","TCP listening configured interface:"+PORT);
             while(running){
                 try(Socket s=ss.accept()){
                     client=s;
                     if(!running)break;
                     s.setSoTimeout(2000);
                     String line=readLine(s.getInputStream());
-                    String reply=handle(line);
+                    String reply;
+                    if("CHALLENGE".equals(line)){
+                        byte[] bytes=new byte[32];random.nextBytes(bytes);
+                        String nonce=hex(bytes);
+                        s.getOutputStream().write(("CHALLENGE "+nonce+"\n").getBytes(StandardCharsets.US_ASCII));
+                        s.getOutputStream().flush();
+                        reply=handleRing(readLine(s.getInputStream()),nonce);
+                    }else reply=handle(line);
                     s.getOutputStream().write((reply+"\n").getBytes(StandardCharsets.US_ASCII));
                     s.getOutputStream().flush();
                 }catch(IOException e){if(running)Log.w("CallLab","TCP client closed or timed out");}
@@ -63,10 +77,25 @@ final class ControlServer implements Closeable {
             PowerManager p=(PowerManager)context.getSystemService(Context.POWER_SERVICE);
             return "PONG locked="+k.isDeviceLocked()+" interactive="+p.isInteractive();
         }
+        return "ERR command";
+    }
+    private static String hex(byte[] bytes){
+        StringBuilder s=new StringBuilder(bytes.length*2);
+        for(byte x:bytes)s.append(String.format(java.util.Locale.US,"%02x",x&255));
+        return s.toString();
+    }
+    private String handleRing(String line,String nonce){
         if(!line.startsWith("RING "))return "ERR command";
         String configured=context.getSharedPreferences("calllab",Context.MODE_PRIVATE).getString("tcp_token","");
         String received=line.substring(5);
-        if(configured.length()!=64||received.length()!=64||!MessageDigest.isEqual(configured.getBytes(StandardCharsets.US_ASCII),received.getBytes(StandardCharsets.US_ASCII)))return "ERR auth";
+        if(!configured.matches("[0-9a-f]{64}")||!received.matches("[0-9a-f]{64}"))return "ERR auth";
+        String expected;
+        try{
+            Mac mac=Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(configured.getBytes(StandardCharsets.US_ASCII),"HmacSHA256"));
+            expected=hex(mac.doFinal(("calllab-ring-v1:"+nonce).getBytes(StandardCharsets.US_ASCII)));
+        }catch(java.security.GeneralSecurityException e){return "ERR auth";}
+        if(!MessageDigest.isEqual(expected.getBytes(StandardCharsets.US_ASCII),received.getBytes(StandardCharsets.US_ASCII)))return "ERR auth";
         long now=android.os.SystemClock.elapsedRealtime();
         if(lastRing!=0&&now-lastRing<5000)return "ERR rate";
         lastRing=now;

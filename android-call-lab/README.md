@@ -66,7 +66,7 @@ legacy Android. No network listener, camera, or microphone is enabled yet.
 Do not use this old OS for public Internet exposure. Future signaling must
 authenticate peers, rate-limit ringing, and require local consent for media.
 
-## Milestone 0.3: local TCP control
+## Milestone 0.3: local TCP control (historical; superseded by 0.4)
 
 The foreground standby service listens on **127.0.0.1:18765** only.
 The protocol is one ASCII line per TCP connection:
@@ -89,3 +89,21 @@ or Internet protocol. Do not forward it to public interfaces; an authenticated
 LAN transport with replay protection is a separate milestone.
 The legacy wake lock is bounded to five seconds; it never dismisses keyguard.
 `OK queued` acknowledges a request, not proof that the screen woke.
+
+## Milestone 0.4: private LAN control
+
+The default bind remains loopback. Provision a specific private IPv4 address
+through the shell-only diagnostic receiver (SET_BIND with string extra host).
+Use a DHCP reservation or re-provision the address if it changes.
+The protocol is now challenge-response HMAC-SHA256: PING remains read-only;
+RING requires a fresh server nonce and a MAC. No secret is sent over the wire.
+The server rate-limits accepted calls. This is not TLS and does not authenticate
+PING responses; do not expose the port to the Internet or untrusted LANs.
+Standby holds a partial CPU wake lock and Wi-Fi lock until disabled; intended
+for powered devices. This increases power use.
+
+The artifact includes callctl.py. Put a private control.json alongside it with
+keys host, port, token (64 hexadecimal characters), and restrict access to 0600.
+Run `python3 callctl.py ping` or `python3 callctl.py ring`. The client uses
+ordinary TCP, not ADB. `reject-test` checks rejection of a bad MAC.
+No camera or microphone is accessed yet.

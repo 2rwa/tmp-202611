@@ -35,4 +35,5 @@ fi
 "$BT/aapt" dump badging dist/call-lab.apk | tee dist/apk-info.txt
 grep -q "sdkVersion:'22'" dist/apk-info.txt
 grep -q "name='io.github.calllab.lockscreen'" dist/apk-info.txt
-(cd dist && sha256sum call-lab.apk > SHA256SUMS)
+cp callctl.py dist/callctl.py
+(cd dist && sha256sum call-lab.apk callctl.py > SHA256SUMS)
