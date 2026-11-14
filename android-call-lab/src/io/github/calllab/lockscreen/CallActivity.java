@@ -14,6 +14,7 @@ import android.widget.TextView;
 
 public final class CallActivity extends Activity {
     private TextView status;
+    private Button arm, stop;
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -42,17 +43,19 @@ public final class CallActivity extends Activity {
         test.setText("Check lock state");
         test.setOnClickListener(v -> refresh());
         root.addView(test, new LinearLayout.LayoutParams(-1, dp(64)));
-        Button arm = new Button(this);
+        arm = new Button(this);
         arm.setText("Enable standby");
         arm.setOnClickListener(v -> {
+            if (((KeyguardManager)getSystemService(KEYGUARD_SERVICE)).isDeviceLocked()) return;
             getSharedPreferences("calllab", MODE_PRIVATE).edit().putBoolean("armed", true).apply();
             CallService.start(this, CallService.ARM);
             refresh();
         });
         root.addView(arm, new LinearLayout.LayoutParams(-1, dp(52)));
-        Button stop = new Button(this);
+        stop = new Button(this);
         stop.setText("Disable standby");
         stop.setOnClickListener(v -> {
+            if (((KeyguardManager)getSystemService(KEYGUARD_SERVICE)).isDeviceLocked()) return;
             getSharedPreferences("calllab", MODE_PRIVATE).edit().putBoolean("armed", false).apply();
             stopService(new Intent(this, CallService.class));
             refresh();
@@ -73,12 +76,15 @@ public final class CallActivity extends Activity {
     @Override protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON | WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         refresh();
     }
 
     private void refresh() {
         KeyguardManager keyguard = (KeyguardManager) getSystemService(Context.KEYGUARD_SERVICE);
         String action = getIntent().getAction();
+        arm.setVisibility(keyguard.isDeviceLocked()? android.view.View.GONE : android.view.View.VISIBLE);
+        stop.setVisibility(keyguard.isDeviceLocked()? android.view.View.GONE : android.view.View.VISIBLE);
         android.util.Log.i("CallLab", "activity action=" + action + " locked=" + keyguard.isDeviceLocked()
             + " secure=" + keyguard.isKeyguardSecure() + " keyguard=" + keyguard.isKeyguardLocked());
         status.setText("Keyguard showing: " + keyguard.isKeyguardLocked()
@@ -87,7 +93,7 @@ public final class CallActivity extends Activity {
             + "\nLaunch: " + ("android.media.action.STILL_IMAGE_CAMERA_SECURE".equals(action)
                 ? "Secure camera intent" : CallService.RING.equals(action) ? "Incoming call" : "Normal")
             + "\nStandby: " + getSharedPreferences("calllab", MODE_PRIVATE).getBoolean("armed", false)
-            + "\nNo media or network access in this build.");
+            + "\nTCP control: local only. No media capture.");
     }
 
     private int dp(int n) {

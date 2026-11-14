@@ -65,3 +65,27 @@ The notification route is preferred; direct start is only a diagnostic for
 legacy Android. No network listener, camera, or microphone is enabled yet.
 Do not use this old OS for public Internet exposure. Future signaling must
 authenticate peers, rate-limit ringing, and require local consent for media.
+
+## Milestone 0.3: local TCP control
+
+The foreground standby service listens on **127.0.0.1:18765** only.
+The protocol is one ASCII line per TCP connection:
+`PING` returns `PONG locked=... interactive=...` without waking the screen.
+`RING <64-hex-token>` queues a wake and the restricted Activity.
+Unknown commands and invalid tokens do not trigger a call. Ring requests are rate limited.
+Provision a random test token through the existing shell/system-only receiver:
+
+```sh
+TOKEN=$(openssl rand -hex 32)
+adb shell am broadcast -n io.github.calllab.lockscreen/.TestReceiver -a io.github.calllab.SET_TOKEN --es token "$TOKEN"
+adb shell am broadcast -n io.github.calllab.lockscreen/.TestReceiver -a io.github.calllab.ARM
+adb forward tcp:18765 tcp:18765
+printf 'PING\n' | nc -w 3 127.0.0.1 18765
+printf 'RING %s\n' "$TOKEN" | nc -w 3 127.0.0.1 18765
+```
+
+Keep the token private. This is a USB/loopback diagnostic protocol, not a LAN
+or Internet protocol. Do not forward it to public interfaces; an authenticated
+LAN transport with replay protection is a separate milestone.
+The legacy wake lock is bounded to five seconds; it never dismisses keyguard.
+`OK queued` acknowledges a request, not proof that the screen woke.

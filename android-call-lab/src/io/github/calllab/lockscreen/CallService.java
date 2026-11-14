@@ -9,11 +9,13 @@ import android.util.Log;
 
 public final class CallService extends Service {
     static final String ARM="io.github.calllab.ARM", RING="io.github.calllab.RING",
-        DIRECT="io.github.calllab.DIRECT";
+        DIRECT="io.github.calllab.DIRECT", SET_TOKEN="io.github.calllab.SET_TOKEN";
     private static final int STANDBY_ID=101, RING_ID=102;
     private MediaSession session;
     private long lastRing;
     private NotificationManager manager;
+    private ControlServer control;
+    private final Handler main = new Handler(Looper.getMainLooper());
     static void start(Context c, String action) {
         Intent i=new Intent(c,CallService.class).setAction(action);
         if(Build.VERSION.SDK_INT>=26) c.startForegroundService(i); else c.startService(i);
@@ -59,6 +61,8 @@ public final class CallService extends Service {
             .setContentTitle("Call Lab standby").setContentText("Waiting for a test call")
             .setContentIntent(activity(ARM,101)).setOngoing(true).build());
         String action=intent==null?ARM:intent.getAction();
+        if (!getSharedPreferences("calllab", MODE_PRIVATE).getBoolean("armed", false)) { stopSelf(); return START_NOT_STICKY; }
+        if (control==null) { control=new ControlServer(this, () -> main.post(() -> ring(true,"tcp"))); control.start(); }
         if(RING.equals(action)||DIRECT.equals(action)) ring(DIRECT.equals(action),"diagnostic");
         return START_STICKY;
     }
@@ -68,6 +72,10 @@ public final class CallService extends Service {
         lastRing=now;
         Log.i("CallLab","ring source="+source+" direct="+direct);
         if(direct) {
+            // Legacy Android: an existing singleTop Activity may not wake the display.
+            PowerManager pm=(PowerManager)getSystemService(POWER_SERVICE);
+            PowerManager.WakeLock wake=pm.newWakeLock(PowerManager.SCREEN_BRIGHT_WAKE_LOCK | PowerManager.ACQUIRE_CAUSES_WAKEUP, "CallLab:ring");
+            wake.acquire(5000);
             startActivity(new Intent(this,CallActivity.class).setAction(RING)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_SINGLE_TOP));
             return;
@@ -81,6 +89,7 @@ public final class CallService extends Service {
     }
     @Override public void onDestroy() {
         clearRing(this);
+        if(control!=null) { control.close(); control=null; }
         session.release();
         stopForeground(true);
         super.onDestroy();
