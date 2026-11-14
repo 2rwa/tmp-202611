@@ -1,0 +1,30 @@
+name: Android Call Lab APK
+on:
+  push:
+    branches: [main]
+    paths:
+      - android-call-lab/**
+      - .github/workflows/android-call-lab.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install Android SDK components
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - name: Build and verify signed test APK
+        run: bash android-call-lab/build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-call-lab-apk
+          path: android-call-lab/dist/
+          if-no-files-found: error
+          retention-days: 30
