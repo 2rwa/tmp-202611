@@ -44,3 +44,24 @@ until that behavior is understood. The app does not dismiss the keyguard.
 
 No physical device identifiers, local hostnames, network addresses, or device
 logs belong in the public repository.
+
+## Milestone 0.2: locked-device wake and ringing
+
+Enable standby from the UI (or the shell-only diagnostic receiver). A foreground
+service owns a media session. Try a headset media-play button; real delivery
+depends on OEM routing and competing players. Normal Enter is not intercepted.
+A boot receiver restarts standby only after explicit opt-in.
+
+```sh
+adb shell am broadcast -n io.github.calllab.lockscreen/.TestReceiver -a io.github.calllab.ARM
+adb shell am broadcast -n io.github.calllab.lockscreen/.TestReceiver -a io.github.calllab.RING
+# Diagnostic comparison: direct background Activity start.
+adb shell am broadcast -n io.github.calllab.lockscreen/.TestReceiver -a io.github.calllab.DIRECT
+```
+
+Test with a secure lock configured and screen asleep. Verify the on-screen
+device-locked state and that closing the Activity still requires the PIN.
+The notification route is preferred; direct start is only a diagnostic for
+legacy Android. No network listener, camera, or microphone is enabled yet.
+Do not use this old OS for public Internet exposure. Future signaling must
+authenticate peers, rate-limit ringing, and require local consent for media.

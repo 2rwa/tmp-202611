@@ -42,9 +42,25 @@ public final class CallActivity extends Activity {
         test.setText("Check lock state");
         test.setOnClickListener(v -> refresh());
         root.addView(test, new LinearLayout.LayoutParams(-1, dp(64)));
+        Button arm = new Button(this);
+        arm.setText("Enable standby");
+        arm.setOnClickListener(v -> {
+            getSharedPreferences("calllab", MODE_PRIVATE).edit().putBoolean("armed", true).apply();
+            CallService.start(this, CallService.ARM);
+            refresh();
+        });
+        root.addView(arm, new LinearLayout.LayoutParams(-1, dp(52)));
+        Button stop = new Button(this);
+        stop.setText("Disable standby");
+        stop.setOnClickListener(v -> {
+            getSharedPreferences("calllab", MODE_PRIVATE).edit().putBoolean("armed", false).apply();
+            stopService(new Intent(this, CallService.class));
+            refresh();
+        });
+        root.addView(stop, new LinearLayout.LayoutParams(-1, dp(52)));
         Button close = new Button(this);
         close.setText("Close");
-        close.setOnClickListener(v -> finish());
+        close.setOnClickListener(v -> { CallService.clearRing(this); finish(); });
         root.addView(close, new LinearLayout.LayoutParams(-1, dp(64)));
         setContentView(root);
     }
@@ -63,12 +79,15 @@ public final class CallActivity extends Activity {
     private void refresh() {
         KeyguardManager keyguard = (KeyguardManager) getSystemService(Context.KEYGUARD_SERVICE);
         String action = getIntent().getAction();
+        android.util.Log.i("CallLab", "activity action=" + action + " locked=" + keyguard.isDeviceLocked()
+            + " secure=" + keyguard.isKeyguardSecure() + " keyguard=" + keyguard.isKeyguardLocked());
         status.setText("Keyguard showing: " + keyguard.isKeyguardLocked()
             + "\nDevice locked: " + keyguard.isDeviceLocked()
             + "\nSecure lock configured: " + keyguard.isKeyguardSecure()
             + "\nLaunch: " + ("android.media.action.STILL_IMAGE_CAMERA_SECURE".equals(action)
-                ? "Secure camera intent" : "Normal")
-            + "\nNo camera, microphone, or network access in this build.");
+                ? "Secure camera intent" : CallService.RING.equals(action) ? "Incoming call" : "Normal")
+            + "\nStandby: " + getSharedPreferences("calllab", MODE_PRIVATE).getBoolean("armed", false)
+            + "\nNo media or network access in this build.");
     }
 
     private int dp(int n) {

@@ -1,8 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="io.github.calllab.lockscreen"
-    android:versionCode="1" android:versionName="0.1.0">
+    android:versionCode="2" android:versionName="0.2.0">
     <uses-sdk android:minSdkVersion="22" android:targetSdkVersion="28"/>
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"/>
     <application android:label="Call Lab" android:allowBackup="false"
         android:theme="@android:style/Theme.Material.NoActionBar"
         android:usesCleartextTraffic="false">
@@ -17,5 +20,12 @@
                 <category android:name="android.intent.category.DEFAULT"/>
             </intent-filter>
         </activity>
+        <service android:name=".CallService" android:exported="false"/>
+        <receiver android:name=".BootReceiver" android:exported="false">
+            <intent-filter><action android:name="android.intent.action.BOOT_COMPLETED"/></intent-filter>
+        </receiver>
+        <!-- Diagnostic trigger limited to shell/system or other DUMP holders. -->
+        <receiver android:name=".TestReceiver" android:exported="true"
+            android:permission="android.permission.DUMP"/>
     </application>
 </manifest>
