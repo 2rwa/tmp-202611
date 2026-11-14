@@ -65,7 +65,7 @@ public final class CallActivity extends Activity {
         String action = getIntent().getAction();
         status.setText("Keyguard showing: " + keyguard.isKeyguardLocked()
             + "\nDevice locked: " + keyguard.isDeviceLocked()
-            + "\nSecure lock configured: " + keyguard.isDeviceSecure()
+            + "\nSecure lock configured: " + keyguard.isKeyguardSecure()
             + "\nLaunch: " + ("android.media.action.STILL_IMAGE_CAMERA_SECURE".equals(action)
                 ? "Secure camera intent" : "Normal")
             + "\nNo camera, microphone, or network access in this build.");
