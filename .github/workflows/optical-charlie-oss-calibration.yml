@@ -1,0 +1,48 @@
+name: Charlie Optical: DiscImageStudio OSS photo rectification
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/optical-charlie-oss-calibration.yml'
+      - 'optical/oss-rectifier/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  photo:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Fetch and pin unmodified DiscImageStudio Core
+        run: |
+          set -euo pipefail
+          mkdir -p optical/_upstream/DiscImageStudio
+          cd optical/_upstream/DiscImageStudio
+          git init -q
+          git fetch --depth 1 https://github.com/JiaFeiMiao-K-Cat/DiscImageStudio.git 28310c8700646808bffa434feb2db68ab2c26a50
+          git checkout --detach FETCH_HEAD
+          test "$(git rev-parse HEAD)" = 28310c8700646808bffa434feb2db68ab2c26a50
+      - name: Expand coordinate-only samples; NO photographs are published
+        run: |
+          gzip -dc optical/oss-rectifier/oss-contours.json.gz > optical/oss-rectifier/oss-contours.json
+          gzip -dc optical/oss-rectifier/legacy-ellipse-comparison.json.gz > optical/oss-rectifier/legacy-ellipse-comparison.json
+      - name: Run official 2-circle photo rectifier on Alpha/Bravo
+        run: |
+          dotnet run --configuration Release --project optical/oss-rectifier/RectifierRunner.csproj -- optical/oss-rectifier/oss-contours.json test-artifacts/optical/rectified.json
+      - name: Compare to existing Charlie v0 ellipse-only measurements
+        run: |
+          python3 -m pip install --quiet numpy==2.2.6
+          python3 optical/oss-rectifier/compare.py test-artifacts/optical/rectified.json test-artifacts/optical/comparison-report.json
+          cat test-artifacts/optical/comparison-report.json >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload reproducible numerical results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: optical-charlie-oss-photo-comparison
+          path: test-artifacts/optical/
+          if-no-files-found: warn
+          retention-days: 30
