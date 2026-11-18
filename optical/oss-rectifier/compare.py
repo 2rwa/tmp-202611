@@ -43,4 +43,23 @@ out.write_text(json.dumps(rep,indent=2,ensure_ascii=False)+'\n')
 with (out.parent/'comparison.csv').open('w') as f:
  f.write('radius_mm,alpha_upstream_rectified_deg,bravo_upstream_rectified_deg,alpha_prior_ellipse_deg,bravo_prior_ellipse_deg\n')
  for i,r in enumerate(rr):f.write(f"{r:.1f},{a[i]:.6f},{b[i]:.6f},{rep['discs']['Alpha']['ellipseRelativeDeg'][i]:.6f},{rep['discs']['Bravo']['ellipseRelativeDeg'][i]:.6f}\n")
+# Compare official photo-rectification-based angular residual to the
+# prior conservative Charlie v0 additional correction. These are both
+# provisional; neither is a physically validated pitch calibration.
+v0={34:-.0196,35:-.226,36:-.455,37:-.545,38:-.590,39:-.593,40:-.553,
+    41:-.475,42:-.368,43:-.246,44:-.121,45:0.,46:.110,47:.201,48:.195}
+comp=[]
+for radius in (34,35,36,38,40,42,45,47,48):
+    i=int(round((radius-34)*2))
+    prior=float(v0[radius])
+    shared=float(.65*a[i]+.35*b[i])
+    proposed=.65*shared
+    comp.append({'radiusMm':radius,'alphaOssResidualDeg':round(float(a[i]),4),
+      'bravoOssResidualDeg':round(float(b[i]),4),'ossProvisionalDelta65Deg':round(proposed,4),
+      'charlieV0DeltaDeg':prior,'differenceOssVsV0Deg':round(proposed-prior,4)})
+rep['selectedRadiusComparison']=comp
+out.write_text(json.dumps(rep,indent=2,ensure_ascii=False)+'\n')
+print('RADIUS   ALPHA-OSS  BRAVO-OSS  OSS-DELTA65  CHARLIE-V0  DIFF',flush=True)
+for v in comp:
+    print(f"{v['radiusMm']:>3} mm  {v['alphaOssResidualDeg']:>+9.4f}  {v['bravoOssResidualDeg']:>+9.4f}   {v['ossProvisionalDelta65Deg']:>+9.4f}   {v['charlieV0DeltaDeg']:>+9.4f}  {v['differenceOssVsV0Deg']:>+9.4f}",flush=True)
 print('OSS_COMPARISON_COMPLETE',rep['twoDiscOfficialPhoto'])
