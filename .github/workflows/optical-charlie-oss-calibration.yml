@@ -1,4 +1,4 @@
-name: Charlie Optical: DiscImageStudio OSS photo rectification
+name: "Charlie Optical: DiscImageStudio OSS photo rectification"
 on:
   push:
     branches: [main]
