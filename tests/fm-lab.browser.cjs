@@ -37,10 +37,20 @@ function syntheticWav() {
   const url = 'http://127.0.0.1:' + server.address().port + '/fm-lab/';
   const browser = await chromium.launch({ headless: true,
     args: ['--autoplay-policy=no-user-gesture-required', '--no-sandbox'] });
+  const page = await browser.newPage({ viewport: { width: 1260, height: 850 } });
+  const artifactDir = path.join(root, 'test-artifacts');
   try {
-    const page = await browser.newPage({ viewport: { width: 1260, height: 850 } });
-    const errors = [];
+    const errors = [], diagnostics = [];
     page.on('pageerror', error => errors.push(String(error)));
+    page.on('console', msg => {
+      if (msg.type() === 'error' || msg.type() === 'warning')
+        diagnostics.push('console ' + msg.type() + ': ' + msg.text());
+    });
+    page.on('requestfailed', req => diagnostics.push(
+      'request failed: ' + req.url() + ' / ' + (req.failure()?.errorText || 'unknown')));
+    page.on('response', res => {
+      if (res.status() >= 400) diagnostics.push('HTTP ' + res.status() + ' ' + res.url());
+    });
     await page.goto(url, { waitUntil: 'networkidle' });
     assert.equal(await page.locator('.preset').count(), 4);
     assert.equal(await page.locator('.key').count(), 13);
@@ -56,15 +66,29 @@ function syntheticWav() {
     await page.locator('#fit').waitFor({ state: 'visible' });
     await page.waitForFunction(() => !document.querySelector('#fit').disabled);
     await page.locator('#fit').click();
+    // Playwright signature: waitForFunction(fn, arg, options).
+    // Third argument sets timeout; CI runner may be much slower than desktop.
     await page.waitForFunction(() =>
       /完了。|最適化エラー|Worker エラー/.test(document.querySelector('#fit-status').textContent),
-      { timeout: 60000 });
+      null, { timeout: 90000 });
     const status = await page.locator('#fit-status').innerText();
     assert.match(status, /完了。/, status);
     fs.mkdirSync(path.join(root, 'test-artifacts'), { recursive: true });
     await page.screenshot({ path: path.join(root, 'test-artifacts', 'fm-lab.png'), fullPage: true });
-    assert.deepEqual(errors, []);
+    assert.deepEqual(errors, [], 'Browser errors: ' + diagnostics.join(' | '));
     console.log('PASS FM Lab Chromium playback, UI, audio import and analytic fit');
+  } catch (error) {
+    fs.mkdirSync(artifactDir, { recursive: true });
+    try {
+      await page.screenshot({ path: path.join(artifactDir, 'fm-lab-failure.png'), fullPage: true });
+    } catch (screenshotError) {
+      console.error('FM Lab screenshot failed:', screenshotError.message);
+    }
+    console.error('FM Lab diagnostics:', {
+      fitStatus: await page.locator('#fit-status').textContent().catch(() => '(unavailable)'),
+      errors, diagnostics
+    });
+    throw error;
   } finally {
     await browser.close();
     server.close();
