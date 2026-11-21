@@ -26,7 +26,10 @@ concurrency:
 jobs:
   deploy:
     name: Test and deploy archive
-    runs-on: ubuntu-latest
+    # Playwright 1.56.1 cannot install Chromium on Ubuntu 26.04.
+    # GitHub migrated ubuntu-latest to 26.04 in November 2026.
+    # Keep 24.04 until the pinned Playwright/browser tests are upgraded.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     environment:
       name: github-pages
