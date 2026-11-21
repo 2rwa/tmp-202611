@@ -39,8 +39,8 @@ function syntheticWav() {
     args: ['--autoplay-policy=no-user-gesture-required', '--no-sandbox'] });
   const page = await browser.newPage({ viewport: { width: 1260, height: 850 } });
   const artifactDir = path.join(root, 'test-artifacts');
+  const errors = [], diagnostics = [];
   try {
-    const errors = [], diagnostics = [];
     page.on('pageerror', error => errors.push(String(error)));
     page.on('console', msg => {
       if (msg.type() === 'error' || msg.type() === 'warning')
