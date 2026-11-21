@@ -114,3 +114,11 @@ The PLaMo-3-compatible wllama runtime must ship **two** worker/WASM pairs genera
 - Run offline: `python3 geo-mcp/probe.py --mock --out geo-mcp/result.json`
 - Tests: `node tests/geo-mcp.test.cjs`; optional live workflow uses repository secret `MLIT_LIBRARY_API_KEY`.
 - Generated results and government API credentials are not included in the public Pages deployment.
+
+## FM INSTRUMENT LAB (2026-11-21)
+
+- [Play instrument patches and fit a sampled note](https://2rwa.github.io/tmp-202611/fm-lab/)
+- Four-operator FM: violin, flute, and two trumpet variants; live keyboard, editable indices/envelopes, waveform/spectrum, WAV export.
+- Browser-local single-note sample matching with **analytic gradients of the FM signal and FFT harmonic-band spectral loss**, optimized by Adam. Pitch and FM operator ratios stay fixed.
+- See [FM lab documentation](fm-lab/README.md) for model limitations and testing.
+- CI: `node tests/fm-lab.test.mjs` (derivative and loss regression), `node tests/fm-lab.browser.cjs` (Chromium UI, WebAudio, and fit).

@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0b1326">
+<title>FM INSTRUMENT LAB — 4-op FM synthesis</title>
+<link rel="stylesheet" href="./style.css">
+<script type="module" src="./app.mjs"></script>
+</head>
+<body>
+<div class="shell">
+  <header class="hero">
+    <nav><a class="back" href="../">← TMP-202611</a><span class="eyebrow">WEB AUDIO · SOUND EXPERIMENT 01</span></nav>
+    <div class="hero-grid">
+      <div>
+        <p class="overline">DIFFERENTIABLE FM / FOUR OPERATORS</p>
+        <h1>FM <span>INSTRUMENT</span> LAB<span class="dot">.</span></h1>
+        <p class="intro">4オペレータのFM合成で、弦・木管・金管の特徴を探る。音を鳴らし、倍音を見て、録音からパラメータを逆推定できます。</p>
+      </div>
+      <div class="hero-formula" aria-label="FMの構造">
+        <div class="chip">OP4 <span>→</span> OP3 <span>→</span> OP2</div>
+        <div class="path">↓ <small>modulation</small></div>
+        <div class="chip accent">OP1 <span>→</span> AUDIO</div>
+        <div class="legend">4 operators / nested phase modulation / parallel carrier</div>
+      </div>
+    </div>
+  </header>
+  <main>
+    <section class="panel">
+      <div class="panelhead"><div><span class="tag">01 / INSTRUMENTS</span><h2>音色を選ぶ</h2></div><span class="hint">いずれも手設計の近似音色です</span></div>
+      <div class="presets" id="presets" role="group" aria-label="音色プリセット"></div>
+    </section>
+    <section class="panel instrument">
+      <div class="panelhead"><div><span class="tag">02 / PLAY</span><h2>演奏する</h2></div><div class="inline-tools"><label for="octave">鍵盤の開始音</label><select id="octave"><option value="48">C3</option><option value="60" selected>C4</option><option value="72">C5</option></select><button id="panic" class="ghost">全消音</button></div></div>
+      <div id="keyboard" class="keyboard" aria-label="演奏鍵盤"></div>
+      <div class="playline"><button id="demo" class="primary">♪ 選択音を試聴</button><button id="export" class="ghost">WAVを書き出す</button><span id="note-info">C4 · 261.6 Hz · キーボード A〜K でも演奏可</span></div>
+      <div class="visuals">
+        <div class="monitor"><div class="monitorhead"><strong>OSCILLOSCOPE</strong><span>TIME DOMAIN</span></div><canvas id="scope" width="760" height="190" aria-label="オシロスコープの波形"></canvas></div>
+        <div class="monitor"><div class="monitorhead"><strong>SPECTRUM</strong><span>0–8 kHz</span></div><canvas id="spectrum" width="760" height="190" aria-label="周波数スペクトル"></canvas></div>
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panelhead"><div><span class="tag">03 / PATCH EDITOR</span><h2>FMパラメータ</h2></div><button id="reset" class="ghost">プリセットに戻す</button></div>
+      <p class="section-copy">変調指数を大きくすると高次倍音が増えます。アタック、リリース、ビブラートも変更できます。変更は次に鳴らす音から反映されます。</p>
+      <div id="controls" class="controls"></div>
+      <details class="math"><summary>合成モデルと制限事項</summary>
+        <p>4つのサイン波オペレータの位相を入れ子状に変調し、2系統のキャリアを混合します。指数は時間減衰し、ADSRに近い音量エンベロープとビブラートを使用します。弓・息・金管の物理モデリングではなく、FMでそれらの特徴を近似しています。</p>
+      </details>
+    </section>
+    <section class="panel fit-panel">
+      <div class="panelhead"><div><span class="tag">04 / INVERSE SYNTHESIS</span><h2>録音に近づける</h2></div><span class="hint">ローカル処理 · サーバー送信なし</span></div>
+      <p class="section-copy">単音のWAV / MP3などを読み込み、選択音高を固定して、4つの変調指数とミックス比を解析的勾配＋Adamで最適化します。窓付きFFTの倍音エネルギー比を損失関数として比較するため、波形の位相が違っても調整できます。</p>
+      <div class="fit-row"><label class="upload" for="target">録音を選ぶ <input type="file" accept="audio/*" id="target"></label><button class="primary" id="fit" disabled>この音にフィット</button><span id="target-name" class="filename">録音なし</span></div>
+      <div class="fit-row secondary"><label for="target-note">録音の音高</label><select id="target-note"></select><audio id="target-audio" controls preload="none" hidden></audio></div>
+      <div class="progress"><div id="progress-fill"></div></div>
+      <p id="fit-status" role="status" aria-live="polite">録音を読み込むと最適化できます。0.3秒以上の、できれば残響の少ない単音を推奨します。</p>
+      <p class="caveat">注意：自動調整するのは4つの変調指数とキャリアの混合比です。オペレータの周波数比、音量エンベロープ、ノイズ成分は現在のプリセットに固定されます。原音に完全一致することは保証しません。</p>
+    </section>
+  </main>
+  <footer><span>FM INSTRUMENT LAB · Vanilla JavaScript + Web Audio API + AudioWorklet</span><a href="https://github.com/2rwa/tmp-202611/tree/main/fm-lab">SOURCE ON GITHUB ↗</a></footer>
+</div>
+</body>
+</html>

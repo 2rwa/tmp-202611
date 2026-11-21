@@ -12,6 +12,7 @@ on:
       - orbit/**
       - translate/**
       - geo-mcp/**
+      - fm-lab/**
       - .github/workflows/pages.yml
   workflow_dispatch:
 
@@ -62,6 +63,14 @@ jobs:
         run: |
           node tests/geo-mcp.test.cjs
           node --check geo-mcp/app.js
+      - name: Test FM synthesis and analytic gradient optimization
+        run: |
+          node tests/fm-lab.test.mjs
+          node --check fm-lab/app.mjs
+          node --check fm-lab/audio-worklet.mjs
+          node --check fm-lab/fit-worker.mjs
+      - name: Test FM Lab in Chromium
+        run: node tests/fm-lab.browser.cjs
       - name: Test PFML3 prompts and glossary
         run: node tests/translate.test.cjs
       - name: Build translator regression bundle
@@ -130,6 +139,7 @@ jobs:
           cp -r games dist/games
           cp -r orbit dist/orbit
           cp -r geo-mcp dist/geo-mcp
+          cp -r fm-lab dist/fm-lab
           # Preserve the last successfully published translator if native Safari
           # validation has not produced a new runtime. Never deploy the mock.
           rm -rf dist/translate
@@ -163,6 +173,8 @@ jobs:
           test -s dist/translate/app.js
           test -s dist/geo-mcp/index.html
           test -s dist/geo-mcp/app.js
+          test -s dist/fm-lab/index.html
+          test -s dist/fm-lab/audio-worklet.mjs
           test -s dist/translate/wasm/wllama.wasm
           test -s dist/translate/compat/wllama.js
           test -s dist/translate/compat/wllama.wasm
