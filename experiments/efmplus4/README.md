@@ -1,0 +1,7 @@
+# EFMPlus four-byte Q exhaustive screen
+Known record: 03 07 9A 90, 5850/20180 = 28.989098% of runs, 46.34831% of run length. GOLF baseline 83 8D 83 8D = 4320/17376. Table from JiaFeiMiao-K-Cat/DiscImageStudio commit 4915b7dfd18db6fe71239f139676642cc1e0bbbc, src/DvdImageSolver/Encoding/EfmPlusTables.Generated.cs (blob 221f05f1ea3e8907fbab1678769a5030781df5ef). Synthetic replay matches 2rwa/d-br/tools/golf/search_golf_macros.js. No drive access, no ECC. 11T count fraction, not length fraction, is the objective.
+
+Compile: cc -O3 -march=native -pthread search.c -o search
+Run: python3 -u run.py --threads 4 --count 4294967296
+
+A bijective permutation of 32-bit indices covers all 2^32 candidates exactly once. Two-frame screening is exhaustive for the requested range; 96-frame validation is selective (top 32 per 10M chunk, plus screen scores at or above previous record; only the best of those threshold candidates per thread is retained). A candidate with a lower screening score may be missed during final ranking. This is not a proof of global 96-frame optimality. Progress every 30 seconds or completion, record updates after each chunk. Checkpoint contains next_index for resume, counts and timings, best and validated candidates. Resume with --start next_index and --count 4294967296-next_index; combine previous best and records manually. GitHub hosted runner, 240-minute hard limit, 225-minute soft deadline to preserve artifact upload. 

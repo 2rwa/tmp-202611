@@ -1,0 +1,77 @@
+name: EFMPlus 4-byte 11T exhaustive screen
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/efmplus4-search.yml'
+  workflow_dispatch:
+    inputs:
+      threads:
+        description: 'Threads (0 = nproc)'
+        default: '0'
+        type: string
+      start:
+        description: 'Start index'
+        default: '0'
+        type: string
+      count:
+        description: 'Candidate count'
+        default: '4294967296'
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: efmplus4-search
+  cancel-in-progress: false
+jobs:
+  search:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    defaults:
+      run:
+        working-directory: experiments/efmplus4
+    env:
+      REQUEST_THREADS: ${{ inputs.threads || '0' }}
+      REQUEST_START: ${{ inputs.start || '0' }}
+      REQUEST_COUNT: ${{ inputs.count || '4294967296' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile and verify baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          lscpu
+          nproc
+          cc --version
+          echo '7e33c7b35eec93f7c4063a38169394f593ed183ba69b620ba4a9a97bfe302c5a  tables.txt' | sha256sum -c -
+          cc -O3 -march=native -Wall -Wextra -pthread search.c -o search
+          ./search --threads 1 --count 10000 > smoke-1.log
+          ./search --threads 4 --count 10000 > smoke-4.log
+          diff <(grep -E '^[0-9A-F]{8} ' smoke-1.log) <(grep -E '^[0-9A-F]{8} ' smoke-4.log)
+          cat smoke-4.log
+          python3 -u run.py --threads 2 --count 10000 --chunk 5000 --out smoke-results
+          python3 -c 'import json; d=json.load(open("smoke-results/checkpoint.json")); assert d["status"]=="complete" and d["tested"]==10000'
+      - name: Search (225-minute soft limit, progress every 30 seconds)
+        shell: bash
+        run: |
+          set -euo pipefail
+          threads="$REQUEST_THREADS"
+          if [[ "$threads" = 0 ]]; then threads="$(nproc)"; fi
+          python3 -u run.py --threads "$threads" --start "$REQUEST_START" --count "$REQUEST_COUNT" --chunk 10000000 --limit-seconds 13500 --out results
+      - name: Summary
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f results/checkpoint.json ]]; then
+            python3 -c 'import json; d=json.load(open("results/checkpoint.json")); print(json.dumps({k:d[k] for k in ("status","tested","next_index","elapsed_seconds","best","records")},indent=2))' | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: efmplus4-search-${{ github.run_id }}
+          path: |
+            experiments/efmplus4/results/
+            experiments/efmplus4/smoke-*.log
+            experiments/efmplus4/smoke-results/
+          if-no-files-found: warn
+          retention-days: 30
