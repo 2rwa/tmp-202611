@@ -23,3 +23,7 @@ See [TESTS.md](TESTS.md) for the feature contract, fixtures and test command. OC
 - 縦中横（実験）: 公式TCYラッパーの投影・横方向成分数・文字列長による採用条件を移植。既定では無効。実画像で検証中。
 
 - 表構造（実験）: TableCenterNet公式ONNXのsimpleデコーダを移植。選択範囲（未選択なら画像全体）を1表として解析し、OCR行をセルへ割り当て、HTML/JSONへ保存する。公式defaultのcorner relocation、罫線補完、複数表の自動抽出は未実装。
+
+### WebGPU diagnostics
+- URL `?ort=1.22.0&opt=disabled` allows pinned ORT Web version and optimization changes; default remains 1.22.0/all until GPU evidence is available. Hybrid choices isolate detector and recognizer, with WASM available for unsupported operators. No automatic retry hides a failed GPU run.
+- `webgpu-probe.cjs` tests real recognition and counts WebGPU compute dispatches. Separate Actions matrix compares the current pinned ORT and the npm stable release, optimization all/disabled. SwiftShader is software GPU validation, not a physical GPU speed benchmark.

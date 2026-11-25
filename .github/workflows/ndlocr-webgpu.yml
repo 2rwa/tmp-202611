@@ -1,0 +1,48 @@
+name: NDLOCR WebGPU compatibility
+on:
+  push:
+    branches: [main]
+    paths: ['ndlocr-lite-v2/**', '.github/workflows/ndlocr-webgpu.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  gpu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        ort: ['1.22.0', 'latest']
+        opt: ['all', 'disabled']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Resolve and pin runtime
+        env:
+          REQUESTED: ${{ matrix.ort }}
+        run: |
+          version="$REQUESTED"
+          if [ "$version" = latest ]; then version=$(npm view onnxruntime-web version); fi
+          echo "ORT_VERSION=$version" >> "$GITHUB_ENV"
+          echo "ONNX Runtime Web: $version"
+      - run: |
+          node --check ndlocr-lite-v2/app.mjs
+          node --check ndlocr-lite-v2/webgpu-probe.cjs
+          sudo apt-get update
+          sudo apt-get install -y fonts-noto-cjk
+          npm install --no-save --no-package-lock playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Real GPU OCR compatibility (SwiftShader)
+        env:
+          ORT_OPT: ${{ matrix.opt }}
+          DEBUG: pw:browser
+        run: node ndlocr-lite-v2/webgpu-probe.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ndlocr-gpu-${{ matrix.ort }}-${{ matrix.opt }}-${{ github.run_attempt }}
+          path: ndlocr-gpu-proof/
+          if-no-files-found: ignore

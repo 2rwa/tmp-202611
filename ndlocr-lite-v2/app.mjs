@@ -4,7 +4,12 @@ import {recognizeCascade,readingOrder,inclusionFromCSV,cropRect,cropPoint,suppre
 const $=id=>document.getElementById(id);
 const revision='1f3adc7af311af1ce4cbbd4d9089f30781d01313';
 const raw='https://raw.githubusercontent.com/ndl-lab/ndlocr-lite/'+revision+'/src/';
-const cdn='https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/';
+const params=new URLSearchParams(location.search);
+const ortVersion=/^\d+\.\d+\.\d+$/.test(params.get('ort')||'')?params.get('ort'):'1.22.0';
+const optimization=['disabled','basic','extended','all'].includes(params.get('opt'))?params.get('opt'):'all';
+const cdn='https://cdn.jsdelivr.net/npm/onnxruntime-web@'+ortVersion+'/dist/';
+const modelEP=key=>activeEP==='webgpu'||(activeEP==='webgpu-rec'&&key.startsWith('rec'))||(activeEP==='webgpu-det'&&key==='det')?['webgpu','wasm']:['wasm'];
+$('runtime-info').textContent='ORT Web '+ortVersion+' / graph '+optimization;
 const specs={
  table:{file:'tablecenternet_s_800_v3.onnx',sha:'fc26e20e0ece97be0d03b495481c33a3982f268966920297061b8c90215cdefa'},
  det:{file:'deim-s-1024x1024-261124.onnx',sha:'f9a41c8453dd687f370bee199fd6d47ecf583cc14f1d839a0b416db39b356e8c'},
@@ -43,7 +48,7 @@ async function runtime(ep){
  for(const s of Object.values(sessions))await s.release();
  sessions={};
  if(!ort){ort=await import(cdn+'ort.webgpu.min.mjs');ort.env.wasm.wasmPaths=cdn;ort.env.wasm.numThreads=1;ort.env.wasm.proxy=false;}
- if(ep==='webgpu'&&(!navigator.gpu||!await navigator.gpu.requestAdapter()))throw Error('WebGPU adapter がありません。WASMを選択してください。');
+ if(ep!=='wasm'&&(!navigator.gpu||!await navigator.gpu.requestAdapter()))throw Error('WebGPU adapter がありません。WASMを選択してください。');
  activeEP=ep;
  if(!charset){
   const r=await fetch(raw+'config/NDLmoji.yaml');if(!r.ok)throw Error('charset HTTP '+r.status);
@@ -100,7 +105,7 @@ async function model(key){
   if(cache)try{await cache.put(url,new Response(bytes));}catch(e){log('cache: '+e.message);}
  }
  const t=time();status('ONNX 初期化: '+key);await yieldUI();
- const s=await ort.InferenceSession.create(bytes,{executionProviders:activeEP==='webgpu'?['webgpu','wasm']:['wasm'],graphOptimizationLevel:'all'});
+ log(key+' providers requested: '+modelEP(key).join(',')+'; ORT '+ortVersion+'; graph '+optimization);const s=await ort.InferenceSession.create(bytes,{executionProviders:modelEP(key),graphOptimizationLevel:optimization});
  const shape=imageShapeFromONNX(bytes,s.inputNames[0]);modelShapes.set(s,shape);log(key+' image input: '+shape.height+' x '+shape.width);
  sessions[key]=s;log(key+' session '+Math.round(time()-t)+' ms; inputs '+s.inputNames.join(', ')+'; outputs '+s.outputNames.join(', '));return s;
 }
@@ -164,7 +169,7 @@ $('run').onclick=async()=>{
   for(let i=0;i<boxes.length;i++){status('文字認識 '+(i+1)+' / '+boxes.length);await yieldUI();const result=await recognizeCascade(boxes[i],read,{simple});boxes[i].rawText=result.text;boxes[i].text=mapper?mapper.apply(result.text):result.text;boxes[i].recognition=result.trace;log('line '+(i+1)+' cascade '+result.trace.map(x=>x.tier+(x.part?':'+x.part:'')+'('+x.length+')').join(' -> '));$('result').value=boxes.slice(0,i+1).map(b=>b.text).join('\n');}
   let cells=[];if($('table-structure').checked){status('表構造認識中');await yieldUI();cells=await inferTable(region,boxes);drawTable(cells);}
   const total=Math.round(time()-t);log('PARSeq '+Math.round(time()-rt)+' ms; total '+total+' ms; requested EP '+ep);
-  lastResult={version:'2.0.0',revision,requestedEP:ep,mode,recognitionMode:simple?'simple':'cascade',normalizedVariants:normalize,tcy:$('enable-tcy').checked,region,width:source.width,height:source.height,elapsedMs:total,tableCells:cells,lines:boxes,text:$('result').value};
+  lastResult={version:'2.0.0',revision,requestedEP:ep,ortVersion,optimization,mode,recognitionMode:simple?'simple':'cascade',normalizedVariants:normalize,tcy:$('enable-tcy').checked,region,width:source.width,height:source.height,elapsedMs:total,tableCells:cells,lines:boxes,text:$('result').value};
   $('save').disabled=false;$('export').disabled=false;status('完了: '+boxes.length+' 行 / '+total+' ms','done');
  }catch(e){log(e.stack||String(e));status(String(e),'error');}finally{controls.forEach(el=>el.disabled=false);}
 };
