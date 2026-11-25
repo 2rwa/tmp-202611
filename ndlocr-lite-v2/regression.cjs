@@ -19,7 +19,7 @@ function cer(actual,expected){
 let browser,page,server,network=[],pageErrors=[];
 async function runOCR(){
  await page.locator('#run').click();
- await page.waitForFunction(()=>['done','error'].includes(document.querySelector('#status').dataset.state),{},{timeout:180000});
+ await page.waitForFunction(()=>['done','error'].includes(document.querySelector('#status').dataset.state)&&!document.querySelector('#run').disabled,{},{timeout:180000});
  const log=await page.locator('#log').innerText();
  const actual=await page.locator('#result').inputValue();
  assert.equal(await page.locator('#status').getAttribute('data-state'),'done',log);
@@ -122,9 +122,9 @@ async function main(){
   },{requires:['#table-structure','#export-format','#export']});
   await feature('12-pdf-multipage-searchable',async()=>{
    const f=await makePDF();await page.locator('#file').setInputFiles(f);await page.waitForFunction(()=>document.querySelector('#status').dataset.state==='ready');await runOCR();
-   await page.locator('#page-next').click();assert.match(await page.locator('#result').inputValue(),/SECOND PAGE OCR/);await page.locator('#page-prev').click();assert.match(await page.locator('#result').inputValue(),/FIRST PAGE OCR/);
+   await page.locator('#page-next').click();await page.waitForFunction(()=>document.querySelector('#status').dataset.state==='done'&&document.querySelector('#page-info').textContent.startsWith('2 /'));assert.match(await page.locator('#result').inputValue(),/SECOND PAGE OCR/);await page.locator('#page-prev').click();await page.waitForFunction(()=>document.querySelector('#status').dataset.state==='done'&&document.querySelector('#page-info').textContent.startsWith('1 /'));assert.match(await page.locator('#result').inputValue(),/FIRST PAGE OCR/);
    const bytes=new Uint8Array(await fs.readFile(await exportFile('pdf','searchable.pdf')));const pdfjs=await import('pdfjs-dist/legacy/build/pdf.mjs');const doc=await pdfjs.getDocument({data:bytes,useSystemFonts:true}).promise;
-   assert.equal(doc.numPages,2);for(let i=1;i<=2;i++){const p=await doc.getPage(i);const content=await p.getTextContent();assert.match(content.items.map(x=>x.str).join(' '),i===1?/FIRST PAGE OCR/:/SECOND PAGE OCR/);}await doc.destroy();return {pages:2};
+   assert.equal(doc.numPages,2);for(let i=1;i<=2;i++){const p=await doc.getPage(i);const content=await p.getTextContent();assert.match(content.items.map(x=>x.str).join(' '),i===1?/FIRST PAGE OCR/:/SECOND PAGE OCR/);}await doc.destroy();await page.locator('#sample').click();await page.waitForFunction(()=>document.querySelector('#status').dataset.state==='ready'&&!document.querySelector('#run').disabled);await runOCR();const jp=new Uint8Array(await fs.readFile(await exportFile('pdf','japanese-searchable.pdf')));const jd=await pdfjs.getDocument({data:jp,useSystemFonts:true}).promise;const text=(await (await jd.getPage(1)).getTextContent()).items.map(x=>x.str).join('');assert.ok(text.includes('国立国会図書館'),text);await jd.destroy();return {pages:2,japanese:true};
   },{requires:['#page-next','#page-prev','#export-format','#export']});
   await feature('13-xml-tei-txt-markdown',async()=>{
    await page.locator('#sample').click();await page.locator('#mode').selectOption('page');await runOCR();
@@ -138,7 +138,7 @@ async function main(){
   await feature('15-multi-image',async()=>{
    const a=await image('batch-a',{w:700,h:90,lines:[{text:'FIRST IMAGE',x:20,y:20}]}),b=await image('batch-b',{w:700,h:90,lines:[{text:'SECOND IMAGE',x:20,y:20}]});
    await page.locator('#file').setInputFiles([a,b]);await page.waitForFunction(()=>document.querySelector('#status').dataset.state==='ready');await page.locator('#mode').selectOption('page');await runOCR();
-   assert.match(await page.locator('#result').inputValue(),/FIRST IMAGE/);await page.locator('#page-next').click();assert.match(await page.locator('#result').inputValue(),/SECOND IMAGE/);await page.locator('#page-prev').click();assert.match(await page.locator('#result').inputValue(),/FIRST IMAGE/);
+   assert.match(await page.locator('#result').inputValue(),/FIRST IMAGE/);await page.locator('#page-next').click();await page.waitForFunction(()=>document.querySelector('#status').dataset.state==='done'&&document.querySelector('#page-info').textContent.startsWith('2 /'));assert.match(await page.locator('#result').inputValue(),/SECOND IMAGE/);await page.locator('#page-prev').click();await page.waitForFunction(()=>document.querySelector('#status').dataset.state==='done'&&document.querySelector('#page-info').textContent.startsWith('1 /'));assert.match(await page.locator('#result').inputValue(),/FIRST IMAGE/);
   },{requires:['#page-next','#page-prev']});
   await feature('18-cascade-models',async()=>{
    await page.locator('#sample').click();await page.locator('#mode').selectOption('page');await page.locator('#order').selectOption('auto');await page.locator('#cascade').selectOption('cascade');

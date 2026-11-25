@@ -1,3 +1,4 @@
+import {openPDF,renderInput,exportDocument,searchablePDF} from './document-io.mjs';
 import {decodeTable,assignTableLines,tableHTML,escapeHTML} from './table-logic.mjs';
 import {recognizeCascade,readingOrder,inclusionFromCSV,cropRect,cropPoint,suppressLines,inkBounds,tcySegments,codepoints} from './ocr-logic.mjs';
 // Experimental JS port of preprocessing and decoding in NDL's NDLOCR-Lite 2.0.0 (CC BY 4.0).
@@ -5,7 +6,7 @@ const $=id=>document.getElementById(id);
 const revision='1f3adc7af311af1ce4cbbd4d9089f30781d01313';
 const raw='https://raw.githubusercontent.com/ndl-lab/ndlocr-lite/'+revision+'/src/';
 const params=new URLSearchParams(location.search);
-const ortVersion=/^\d+\.\d+\.\d+$/.test(params.get('ort')||'')?params.get('ort'):'1.22.0';
+const ortVersion=/^\d+\.\d+\.\d+$/.test(params.get('ort')||'')?params.get('ort'):'1.31.1';
 const optimization=['disabled','basic','extended','all'].includes(params.get('opt'))?params.get('opt'):'all';
 const cdn='https://cdn.jsdelivr.net/npm/onnxruntime-web@'+ortVersion+'/dist/';
 const modelEP=key=>activeEP==='webgpu'||(activeEP==='webgpu-rec'&&key.startsWith('rec'))||(activeEP==='webgpu-det'&&key==='det')?['webgpu','wasm']:['wasm'];
@@ -20,13 +21,14 @@ const specs={
 const source=document.createElement('canvas'), preview=$('preview');
 let ort, charset, activeEP, sessions={}, lastResult=null;
 const modelShapes=new WeakMap();
+let entries=[],pageResults=[],pageSelections=[],pageIndex=0,documentBusy=false;
 let selection=null,dragStart=null,cropActive=false,inclusion=null,inclusionPromise=null;
 const fullRegion=()=>({x1:0,y1:0,x2:source.width,y2:source.height});
 async function getInclusion(){if(inclusion)return inclusion;if(!inclusionPromise)inclusionPromise=(async()=>{const r=await fetch(raw+'config/character_inclusion_mapping.csv');if(!r.ok)throw Error('character inclusion HTTP '+r.status);const m=inclusionFromCSV(await r.text());log('character inclusion: '+m.size+' mappings');return inclusion=m;})().finally(()=>{inclusionPromise=null;});return inclusionPromise;}
 function clearResult(){lastResult=null;$('result').value='';$('save').disabled=true;$('export').disabled=true;$('table-preview').replaceChildren();}
 function paintSelection(r=selection){const ctx=preview.getContext('2d');ctx.drawImage(source,0,0);if(!r)return;ctx.fillStyle='rgba(0,0,0,.35)';ctx.fillRect(0,0,source.width,r.y1);ctx.fillRect(0,r.y2,source.width,source.height-r.y2);ctx.fillRect(0,r.y1,r.x1,r.y2-r.y1);ctx.fillRect(r.x2,r.y1,source.width-r.x2,r.y2-r.y1);ctx.strokeStyle='#0284c7';ctx.lineWidth=Math.max(2,source.width/500);ctx.strokeRect(r.x1,r.y1,r.x2-r.x1,r.y2-r.y1);}
 function cropState(on){cropActive=on;$('crop').setAttribute('aria-pressed',String(on));preview.style.cursor=on?'crosshair':'';preview.style.touchAction=on?'none':'';}
-function updateSelection(r){selection=r;clearResult();paintSelection();$('crop-info').textContent=r?`範囲: ${r.x1},${r.y1} / ${r.x2-r.x1} × ${r.y2-r.y1}`:'画像全体';status('画像準備完了','ready');}
+function updateSelection(r){selection=r;pageSelections[pageIndex]=r;pageResults[pageIndex]=null;clearResult();paintSelection();$('crop-info').textContent=r?`範囲: ${r.x1},${r.y1} / ${r.x2-r.x1} × ${r.y2-r.y1}`:'画像全体';status('画像準備完了','ready');}
 $('crop').onclick=()=>{cropState(!cropActive);if(cropActive)paintSelection();};
 $('crop-clear').onclick=()=>{cropState(false);updateSelection(null);};
 const pointer=e=>{const r=preview.getBoundingClientRect(),s=getComputedStyle(preview);const l=parseFloat(s.borderLeftWidth)||0,t=parseFloat(s.borderTopWidth)||0,rr=parseFloat(s.borderRightWidth)||0,b=parseFloat(s.borderBottomWidth)||0;return cropPoint(e.clientX,e.clientY,{left:r.left+l,top:r.top+t,width:r.width-l-rr,height:r.height-t-b},source.width,source.height);};
@@ -39,10 +41,48 @@ function status(msg,state='running'){$('status').textContent=msg;$('status').dat
 const time=()=>performance.now();
 const yieldUI=()=>new Promise(resolve=>setTimeout(resolve,0));
 const canvas=(w,h)=>Object.assign(document.createElement('canvas'),{width:w,height:h});
-function showSource(){preview.width=source.width;preview.height=source.height;cropState(false);dragStart=null;updateSelection(null);$('run').disabled=false;}
-function drawSample(){source.width=900;source.height=280;const ctx=source.getContext('2d');ctx.fillStyle='white';ctx.fillRect(0,0,900,280);ctx.fillStyle='black';ctx.font='42px sans-serif';ctx.fillText('国立国会図書館',35,85);ctx.fillText('日本語の文字認識を試します。',35,155);ctx.fillText('NDLOCR Lite 2.0',35,225);showSource();}
+const controlIDs=['file','sample','mode','ep','order','cascade','crop','crop-clear','normalize-variants','enable-tcy','table-structure','export-format','run','page-prev','page-next'];
+function updateNavigation(){
+ $('page-info').textContent=(entries.length?pageIndex+1:0)+' / '+entries.length;
+ $('page-prev').disabled=documentBusy||pageIndex<=0;
+ $('page-next').disabled=documentBusy||pageIndex>=entries.length-1;
+ $('run').disabled=documentBusy||!entries.length;
+ $('save').disabled=documentBusy||!lastResult;
+ $('export').disabled=documentBusy||!entries.length||pageResults.length!==entries.length||!pageResults.every(Boolean);
+}
+function busy(on){documentBusy=on;for(const id of controlIDs)$(id).disabled=on;updateNavigation();}
+function showSource(){
+ preview.width=source.width;preview.height=source.height;cropState(false);dragStart=null;
+ selection=pageSelections[pageIndex]||null;clearResult();paintSelection();
+ $('crop-info').textContent=selection?'選択範囲':'画像全体';
+ const result=pageResults[pageIndex];
+ if(result){lastResult=result;$('result').value=result.text;drawBoxes(result.lines);if(result.tableCells?.length)drawTable(result.tableCells);status('完了: '+result.lines.length+' 行 / '+result.elapsedMs+' ms','done');}
+ else status('画像準備完了','ready');
+ updateNavigation();
+}
+async function showPage(i){if(i<0||i>=entries.length)throw Error('Invalid page index');pageIndex=i;status('ページ '+(i+1)+' 読み込み中');await renderInput(entries[i],source);showSource();}
+async function resetEntries(next){
+ const docs=new Set(entries.filter(x=>x.kind==='pdf').map(x=>x.doc));entries=next;pageResults=next.map(()=>null);pageSelections=next.map(()=>null);pageIndex=0;clearResult();
+ for(const d of docs)await d.destroy();
+ await showPage(0);
+}
+async function drawSample(){if(documentBusy)return;busy(true);try{await resetEntries([{kind:'sample',name:'sample.png'}]);}catch(e){status(String(e),'error');}finally{busy(false);}}
 $('sample').onclick=drawSample;
-$('file').onchange=async e=>{try{const f=e.target.files[0];if(!f)return;const im=await createImageBitmap(f);if(im.width*im.height>40000000){im.close();throw Error('画像は4000万画素以下にしてください');}source.width=im.width;source.height=im.height;const ctx=source.getContext('2d');ctx.fillStyle='white';ctx.fillRect(0,0,source.width,source.height);ctx.drawImage(im,0,0);im.close();showSource();}catch(e){status(String(e),'error');}};
+$('file').onchange=async e=>{
+ if(documentBusy||!e.target.files.length)return;const files=Array.from(e.target.files),next=[],opened=[];busy(true);status('文書読み込み中');
+ try{
+  for(const f of files){
+   if(f.type==='application/pdf'||/\.pdf$/i.test(f.name)){const d=await openPDF(f);opened.push(d);for(let i=1;i<=d.numPages;i++)next.push({kind:'pdf',doc:d,number:i,name:f.name+'#'+i});}
+   else next.push({kind:'image',file:f,name:f.name});
+  }
+  if(next.length>200)throw Error('一度に200ページまで処理できます');
+  await resetEntries(next);
+ }catch(e){for(const d of opened)if(!entries.some(x=>x.doc===d))await d.destroy().catch(()=>{});status(String(e),'error');}
+ finally{busy(false);}
+};
+async function navigate(i){if(documentBusy)return;busy(true);try{await showPage(i);}catch(e){status(String(e),'error');}finally{busy(false);}}
+$('page-prev').onclick=()=>navigate(pageIndex-1);
+$('page-next').onclick=()=>navigate(pageIndex+1);
 async function runtime(ep){
  if(ort&&activeEP===ep&&charset)return;
  for(const s of Object.values(sessions))await s.release();
@@ -156,8 +196,8 @@ async function inferTable(region,lines){
 }
 function drawTable(cells){const ctx=preview.getContext('2d');ctx.strokeStyle='#0891b2';ctx.lineWidth=Math.max(2,source.width/500);for(const cell of cells){ctx.beginPath();cell.corners.forEach(([x,y],i)=>i?ctx.lineTo(x,y):ctx.moveTo(x,y));ctx.closePath();ctx.stroke();}$('table-preview').innerHTML=cells.length?tableHTML(cells):'<p>表セルが検出されませんでした。</p>';}
 function drawBoxes(boxes){paintSelection();const ctx=preview.getContext('2d');ctx.strokeStyle='#e11d48';ctx.fillStyle='#e11d48';ctx.lineWidth=Math.max(2,source.width/500);ctx.font=Math.max(14,source.width/60)+'px sans-serif';for(const [i,b] of boxes.entries()){ctx.strokeRect(b.x1,b.y1,b.x2-b.x1,b.y2-b.y1);ctx.fillText(String(i+1),b.x1,Math.max(15,b.y1));}}
-$('run').onclick=async()=>{
- const controls=['file','sample','mode','ep','order','cascade','crop','crop-clear','normalize-variants','enable-tcy','table-structure','export-format','run'].map($);controls.forEach(el=>el.disabled=true);$('log').textContent='';clearResult();cropState(false);const t=time();
+async function runPage(){
+ $('log').textContent='';clearResult();cropState(false);const t=time();
  try{
   const ep=$('ep').value,mode=$('mode').value;status('ONNX Runtime 初期化');await runtime(ep);const region=selection||fullRegion(),normalize=$('normalize-variants').checked,mapper=normalize?await getInclusion():null;let boxes;
   if(mode==='page'){const det=await model('det');status('行検出中');await yieldUI();boxes=readingOrder(await detect(det,region),$('order').value);}
@@ -169,17 +209,26 @@ $('run').onclick=async()=>{
   for(let i=0;i<boxes.length;i++){status('文字認識 '+(i+1)+' / '+boxes.length);await yieldUI();const result=await recognizeCascade(boxes[i],read,{simple});boxes[i].rawText=result.text;boxes[i].text=mapper?mapper.apply(result.text):result.text;boxes[i].recognition=result.trace;log('line '+(i+1)+' cascade '+result.trace.map(x=>x.tier+(x.part?':'+x.part:'')+'('+x.length+')').join(' -> '));$('result').value=boxes.slice(0,i+1).map(b=>b.text).join('\n');}
   let cells=[];if($('table-structure').checked){status('表構造認識中');await yieldUI();cells=await inferTable(region,boxes);drawTable(cells);}
   const total=Math.round(time()-t);log('PARSeq '+Math.round(time()-rt)+' ms; total '+total+' ms; requested EP '+ep);
-  lastResult={version:'2.0.0',revision,requestedEP:ep,ortVersion,optimization,mode,recognitionMode:simple?'simple':'cascade',normalizedVariants:normalize,tcy:$('enable-tcy').checked,region,width:source.width,height:source.height,elapsedMs:total,tableCells:cells,lines:boxes,text:$('result').value};
-  $('save').disabled=false;$('export').disabled=false;status('完了: '+boxes.length+' 行 / '+total+' ms','done');
- }catch(e){log(e.stack||String(e));status(String(e),'error');}finally{controls.forEach(el=>el.disabled=false);}
+  lastResult={version:'2.0.0',name:entries[pageIndex].name,page:pageIndex+1,revision,requestedEP:ep,ortVersion,optimization,mode,recognitionMode:simple?'simple':'cascade',normalizedVariants:normalize,tcy:$('enable-tcy').checked,region,width:source.width,height:source.height,elapsedMs:total,tableCells:cells,lines:boxes,text:$('result').value};
+  pageResults[pageIndex]=lastResult;status('完了: '+boxes.length+' 行 / '+total+' ms','done');return lastResult;
+ }catch(e){log(e.stack||String(e));status(String(e),'error');throw e;}
+}
+$('run').onclick=async()=>{
+ if(documentBusy||!entries.length)return;busy(true);const origin=pageIndex;
+ try{for(let i=0;i<entries.length;i++){if(i!==pageIndex)await showPage(i);pageResults[i]=null;await runPage();}if(entries.length>1)await showPage(origin);}
+ catch(e){status(String(e),'error');}finally{busy(false);}
 };
 $('copy').onclick=async()=>{try{await navigator.clipboard.writeText($('result').value);}catch(e){log(String(e));}};
 $('save').onclick=()=>{if(!lastResult)return;const url=URL.createObjectURL(new Blob([JSON.stringify(lastResult,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='ndlocr-v2.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
 drawSample();
 
-$('export').onclick=()=>{
- if(!lastResult)return;
- const fmt=$('export-format').value;
- const content=fmt==='html'?'<!doctype html><html lang="ja"><meta charset="utf-8"><title>NDLOCR result</title><style>table{border-collapse:collapse}td{border:1px solid #888;padding:6px}</style>'+ (lastResult.tableCells.length?tableHTML(lastResult.tableCells):'<pre>'+escapeHTML(lastResult.text)+'</pre>')+'</html>':lastResult.text;
- const url=URL.createObjectURL(new Blob([content],{type:fmt==='html'?'text/html;charset=utf-8':'text/plain;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download='ndlocr-result.'+fmt;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+$('export').onclick=async()=>{
+ if(documentBusy||!pageResults.length||!pageResults.every(Boolean))return;
+ const fmt=$('export-format').value;busy(true);
+ try{
+  const content=fmt==='pdf'?await searchablePDF(entries,pageResults,(i,n)=>status('PDF出力 '+i+' / '+n)):exportDocument(pageResults,fmt);
+  const mime={pdf:'application/pdf',xml:'application/xml;charset=utf-8',tei:'application/xml;charset=utf-8',html:'text/html;charset=utf-8',markdown:'text/markdown;charset=utf-8',txt:'text/plain;charset=utf-8'}[fmt];
+  const url=URL.createObjectURL(new Blob([content],{type:mime}));const a=document.createElement('a');a.href=url;a.download='ndlocr-result.'+fmt;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  status('出力完了: '+fmt,'done');
+ }catch(e){log(String(e));status(String(e),'error');}finally{busy(false);}
 };

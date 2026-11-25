@@ -27,3 +27,6 @@ See [TESTS.md](TESTS.md) for the feature contract, fixtures and test command. OC
 ### WebGPU diagnostics
 - URL `?ort=1.22.0&opt=disabled` allows pinned ORT Web version and optimization changes; default remains 1.22.0/all until GPU evidence is available. Hybrid choices isolate detector and recognizer, with WASM available for unsupported operators. No automatic retry hides a failed GPU run.
 - `webgpu-probe.cjs` tests real recognition and counts WebGPU compute dispatches. Separate Actions matrix compares the current pinned ORT and the npm stable release, optimization all/disabled. SwiftShader is software GPU validation, not a physical GPU speed benchmark.
+
+- 通常版ORT Webを実機確認済みの1.31.1へ更新。MacではDEIM WebGPU / PARSeq WASM推奨（3.09倍の実測）。WASMを互換性重視の既定として維持。
+- 複数画像/PDF入力（最大200ページ）、全ページ順次OCR、結果をページ単位に保持、前後ページ移動。PDF.jsで入力を最大2.5倍にレンダリング。TXT/HTML/NDL XML/TEI/Markdownおよび検索可能PDFを全ページ出力。検索可能PDFは原文をラスタ化した画像に不可視テキストを重ねる試作で、元PDFのリンクやベクトル構造は保持しない。日本語フォントは必要時だけ取得。DAISYは未実装。
