@@ -1,7 +1,9 @@
 # Two-VM Samba regression
 
-Run only on a disposable Ubuntu GitHub-hosted runner. The original setup script is supplied as an argument from its private repository; this public repository does not contain it. No physical host or production credentials are used.
+The original v2 script is published here at `scripts/lan-share/setup-samba-host.sh`, copied unchanged from the private bridge repository with the owner's permission.
 
-`bash tests/samba-qemu/run.sh /path/to/setup-samba-host.sh`
+Run via the **Samba QEMU regression** GitHub Actions workflow (GitHub-hosted ubuntu-24.04 runner), or on a disposable Ubuntu host:
 
-Two Ubuntu cloud images (24.04 and 26.04) boot on an isolated tap bridge with independent NAT interfaces for packages and SSH. The test drives the real interactive setup via a pseudo-terminal, validates clean-client mDNS bootstrap, both server/client roles, repeat setup, CIFS mounts, credentials permissions, negative guest/SMB2 authentication, bidirectional 8 MiB data and ownership, deletion, and reboot persistence. If clean bootstrap fails, the test explicitly records failure, installs missing discovery dependencies, and continues other checks before exiting nonzero. Logs and the source SHA identify the tested version. KVM is used when available, otherwise TCG. No production script is modified.
+`bash tests/samba-qemu/run.sh scripts/lan-share/setup-samba-host.sh`
+
+Two Ubuntu cloud images (24.04 and 26.04), isolated tap bridge and independent NAT interfaces for SSH/package installation. The harness drives the original interactive setup over SSH PTYs, using randomly generated disposable credentials. Checks clean-client mDNS bootstrap, mutual server/client setup, idempotence, real CIFS mounts, permissions, guest/SMB2 rejection, bidirectional file operations and SHA-256, and reboot persistence. If clean bootstrap fails, it records the failure, installs discovery dependencies and attempts the remaining checks. No physical host or production credentials are used. KVM if available, otherwise TCG. Logs are uploaded as an Actions artifact.

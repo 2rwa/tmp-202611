@@ -30,7 +30,7 @@ for n in a b; do
   sudo ip link set "smb-tap-$n" up
 done
 accel=tcg
-if [[ -e /dev/kvm ]]; then sudo chmod a+rw /dev/kvm; accel=kvm; fi
+if [[ -c /dev/kvm ]]; then sudo chmod a+rw /dev/kvm; [[ ! -r /dev/kvm || ! -w /dev/kvm ]] || accel=kvm; fi
 echo "QEMU accelerator: $accel"
 boot() {
   local n="$1" ver="$2" port="$3" addr="$4" uid="$5" suffix="$6"
@@ -102,6 +102,7 @@ while True:
 PY
 }
 export SMB_TEST_PASSWORD="$(openssl rand -hex 24)"
+if [[ "${GITHUB_ACTIONS:-}" == true ]]; then echo "::add-mask::$SMB_TEST_PASSWORD"; fi
 boot a 24.04 22011 10.77.0.11 1101 11
 boot b 26.04 22012 10.77.0.12 1201 12
 for p in 22011 22012; do
@@ -136,11 +137,11 @@ for spec in '22011 a b' '22012 b a'; do
   read -r p n peer <<<"$spec"
   echo "TEST $n status, CIFS, permissions, auth rejection, file I/O"
   guest "$p" "$base status --expected-host smb-$n --iface lan0 --peer smb-$peer"
-  guest "$p" "set -eu; mp=/mnt/peers/smb-$peer/share; ls \"\$mp\"; findmnt -n -t cifs --mountpoint \"\$mp\"; test \"\$(sudo stat -c '%a %u' /etc/samba/credentials/smb-$peer.cred)\" = '600 0'; test \"\$(grep -c ' /mnt/peers/smb-$peer/share cifs ' /etc/fstab)\" = 1; sudo testparm -s >/dev/null; systemctl is-active smbd; ss -ltn '( sport = :445 )'; if smbclient //smb-$peer.local/share -N -c ls; then exit 1; fi; if sudo smbclient //smb-$peer.local/share -A /etc/samba/credentials/smb-$peer.cred --option='client min protocol=SMB2_10' --option='client max protocol=SMB2_10' -c ls; then exit 1; fi; dd if=/dev/urandom of=/tmp/payload-$n bs=1M count=8 status=none; cp /tmp/payload-$n \"\$mp/$n.bin\"; cmp /tmp/payload-$n \"\$mp/$n.bin\"; mkdir \"\$mp/$n-dir\"; mv \"\$mp/$n.bin\" \"\$mp/$n-dir/data.bin\"; sha256sum /tmp/payload-$n"
+  guest "$p" "set -eu; mp=/mnt/peers/smb-$peer/share; ls \"\$mp\"; findmnt -n -t cifs --mountpoint \"\$mp\"; test \"\$(sudo stat -c '%a %u' /etc/samba/credentials/smb-$peer.cred)\" = '600 0'; test \"\$(grep -c ' /mnt/peers/smb-$peer/share cifs ' /etc/fstab)\" = 1; sudo testparm -s >/dev/null; systemctl is-active smbd; ss -ltn '( sport = :445 )'; if smbclient //smb-$peer.local/share -N -c ls; then exit 1; fi; if sudo smbclient //smb-$peer.local/share -A /etc/samba/credentials/smb-$peer.cred --option='client min protocol=SMB2_10' --option='client max protocol=SMB2_10' -c ls; then exit 1; fi; dd if=/dev/urandom of=/var/tmp/payload-$n bs=1M count=8 status=none; cp /var/tmp/payload-$n \"\$mp/$n.bin\"; cmp /var/tmp/payload-$n \"\$mp/$n.bin\"; mkdir \"\$mp/$n-dir\"; mv \"\$mp/$n.bin\" \"\$mp/$n-dir/data.bin\"; sha256sum /var/tmp/payload-$n"
 done
 for spec in '22011 a b 22012' '22012 b a 22011'; do
   read -r p n peer other <<<"$spec"
-  expected="$(guest "$other" "sha256sum /tmp/payload-$peer" | awk '{print $1}')"
+  expected="$(guest "$other" "sha256sum /var/tmp/payload-$peer" | awk '{print $1}')"
   actual="$(guest "$p" "sha256sum /srv/runner-share/$peer-dir/data.bin" | awk '{print $1}')"
   test "$expected" = "$actual"
   guest "$p" "test \"\$(stat -c %U:%G /srv/runner-share/$peer-dir/data.bin)\" = runner:runner"
@@ -155,7 +156,7 @@ for i in {1..120}; do
 done
 test -n "$now"; test "$now" != "$old"
 ready 22012
-guest 22012 'ls /mnt/peers/smb-a/share; findmnt -n -t cifs --mountpoint /mnt/peers/smb-a/share; cmp /tmp/payload-b /mnt/peers/smb-a/share/b-dir/data.bin'
+guest 22012 'ls /mnt/peers/smb-a/share; findmnt -n -t cifs --mountpoint /mnt/peers/smb-a/share; cmp /var/var/tmp/payload-b /mnt/peers/smb-a/share/b-dir/data.bin'
 guest 22011 'rm /mnt/peers/smb-b/share/a-dir/data.bin; rmdir /mnt/peers/smb-b/share/a-dir'
 guest 22012 'test ! -e /srv/runner-share/a-dir'
 guest 22012 'rm /mnt/peers/smb-a/share/b-dir/data.bin; rmdir /mnt/peers/smb-a/share/b-dir'

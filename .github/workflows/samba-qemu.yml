@@ -1,0 +1,31 @@
+name: Samba QEMU regression
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - scripts/lan-share/setup-samba-host.sh
+      - tests/samba-qemu/**
+      - .github/workflows/samba-qemu.yml
+permissions:
+  contents: read
+jobs:
+  two-vm:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntax and host preflight
+        run: |
+          bash -n scripts/lan-share/setup-samba-host.sh tests/samba-qemu/run.sh
+          df -h
+          free -h
+          ls -l /dev/kvm /dev/net/tun || true
+      - name: Two Ubuntu guests, real SMB and CIFS
+        run: bash tests/samba-qemu/run.sh scripts/lan-share/setup-samba-host.sh 2>&1 | tee samba-qemu.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: samba-qemu-log
+          path: samba-qemu.log
+          if-no-files-found: warn
