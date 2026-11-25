@@ -22,3 +22,5 @@ PASS = assertion satisfied; FAIL = implemented feature regression, fails CI; PEN
 | 16–17 | warm model cache with ONNX URL blocked; no non-GET requests during local OCR |
 
 Next tests to add before implementing each corresponding feature: 30/50/100 cascade and >100-character lines, vertical-in-horizontal (縦中横), merged table cells, rubies/complex layout, PDF image preservation + invisible text geometry, DAISY schema/link validation, screen capture with user permission, WebGPU actual EP profiling and browser matrix, full JaWildText handwriting CER. No fake tests or silent skips. Selectors are intended implementation contract, not current UI claims.
+
+Cases 18–19: real cascade inference and long horizontal line splitting (exploratory CER). logic.test.mjs tests thresholds, split geometry and XY-cut order. Short-model selection is driven by the detector, not a character-count estimate.

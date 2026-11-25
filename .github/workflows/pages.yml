@@ -146,7 +146,7 @@ jobs:
           cp -r geo-mcp dist/geo-mcp
           cp -r fm-lab dist/fm-lab
           mkdir -p dist/ndlocr-lite-v2
-          cp ndlocr-lite-v2/{index.html,app.mjs} dist/ndlocr-lite-v2/
+          cp ndlocr-lite-v2/{index.html,app.mjs,ocr-logic.mjs} dist/ndlocr-lite-v2/
           # Preserve the last successfully published translator if native Safari
           # validation has not produced a new runtime. Never deploy the mock.
           rm -rf dist/translate

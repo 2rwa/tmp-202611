@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import {firstTier,recognizeCascade,readingOrder} from './ocr-logic.mjs';
+const b={x1:0,y1:0,x2:2000,y2:30,count:3};
+assert.deepEqual([3,2,1,0,100,undefined].map(firstTier),[30,50,100,100,100,100]);
+let calls=[];
+let r=await recognizeCascade(b,async(t)=>{calls.push(t);return '短文';});assert.equal(r.text,'短文');assert.deepEqual(calls,[30]);
+calls=[];r=await recognizeCascade(b,async t=>{calls.push(t);return 'あ'.repeat(t===30?25:t===50?45:60);});assert.deepEqual(calls,[30,50,100]);assert.equal(r.text.length,60);
+calls=[];r=await recognizeCascade({...b,count:2},async t=>{calls.push(t);return 'あ'.repeat(24);});assert.deepEqual(calls,[50]);
+calls=[];r=await recognizeCascade(b,async(t,box)=>{calls.push([t,box.x1,box.x2]);return box.x2-box.x1===2000?'あ'.repeat(98):box.x1===0?'左':'右';},{simple:true});assert.deepEqual(calls,[[100,0,2000],[100,0,1000],[100,1000,2000]]);assert.equal(r.text,'左右');
+calls=[];r=await recognizeCascade({...b,x2:30,y2:2000,count:1},async t=>{calls.push(t);return 'あ'.repeat(98);});assert.deepEqual(calls,[100]);
+const box=(id,x,y,w=200,h=35)=>({id,x1:x,y1:y,x2:x+w,y2:y+h});
+const cols=[box('A',20,20),box('B',20,90),box('C',500,20),box('D',500,90)];
+assert.deepEqual(readingOrder([cols[2],cols[1],cols[3],cols[0]],'horizontal').map(x=>x.id),['A','B','C','D']);
+assert.deepEqual(readingOrder([box('left',20,20,30,300),box('right',200,20,30,300)],'vertical').map(x=>x.id),['right','left']);
+assert.deepEqual(readingOrder([box('bottom',20,110),box('top',20,20)],'auto').map(x=>x.id),['top','bottom']);
+console.log('cascade and XY-cut logic tests passed');

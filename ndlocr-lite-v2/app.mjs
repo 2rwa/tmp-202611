@@ -1,3 +1,4 @@
+import {recognizeCascade,readingOrder} from './ocr-logic.mjs';
 // Experimental JS port of preprocessing and decoding in NDL's NDLOCR-Lite 2.0.0 (CC BY 4.0).
 const $=id=>document.getElementById(id);
 const revision='1f3adc7af311af1ce4cbbd4d9089f30781d01313';
@@ -5,6 +6,8 @@ const raw='https://raw.githubusercontent.com/ndl-lab/ndlocr-lite/'+revision+'/sr
 const cdn='https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/';
 const specs={
  det:{file:'deim-s-1024x1024-261124.onnx',sha:'f9a41c8453dd687f370bee199fd6d47ecf583cc14f1d839a0b416db39b356e8c'},
+ rec30:{file:'parseq-ndl-24x256-30-tiny-499epoch-261124.onnx',sha:'063ec5b3201bce79d56c3ad73b5726cf76ec6a82f42e11a89466ae683755296c'},
+ rec50:{file:'parseq-ndl-24x384-50-tiny-278epoch-261124.onnx',sha:'d3dd9e7733aeff5c9f50687c7da6e8d01915a0bf07cfbefe1d9ac58241c61471'},
  rec:{file:'parseq-ndl-24x768-100-tiny-153epoch-261124.onnx',sha:'06462b0dbd5b0b8508545c8c3d485cf20dbf4ffa652fe145e69c9e7457080602'}
 };
 const source=document.createElement('canvas'), preview=$('preview');
@@ -107,7 +110,6 @@ async function detect(s){
  for(const v of o)v.dispose();x.dispose();size.dispose();
  return suppress(arr);
 }
-function sortLines(boxes,order){if(order==='auto')order=boxes.filter(b=>b.y2-b.y1>(b.x2-b.x1)*.8).length>boxes.length/2?'vertical':'horizontal';return [...boxes].sort(order==='vertical'?(a,b)=>b.x2-a.x2||a.y1-b.y1:(a,b)=>a.y1-b.y1||a.x1-b.x1);}
 async function recognize(s,b){
  const {height:ih,width:iw}=modelShapes.get(s);
  const w=b.x2-b.x1,h=b.y2-b.y1,c=canvas(iw,ih),ctx=c.getContext('2d');
@@ -122,17 +124,18 @@ async function recognize(s,b){
 }
 function drawBoxes(boxes){const ctx=preview.getContext('2d');ctx.drawImage(source,0,0);ctx.strokeStyle='#e11d48';ctx.fillStyle='#e11d48';ctx.lineWidth=Math.max(2,source.width/500);ctx.font=Math.max(14,source.width/60)+'px sans-serif';for(const [i,b] of boxes.entries()){ctx.strokeRect(b.x1,b.y1,b.x2-b.x1,b.y2-b.y1);ctx.fillText(String(i+1),b.x1,Math.max(15,b.y1));}}
 $('run').onclick=async()=>{
- const controls=['file','sample','mode','ep','order','run'].map($);controls.forEach(el=>el.disabled=true);$('log').textContent='';$('result').value='';lastResult=null;const t=time();
+ const controls=['file','sample','mode','ep','order','cascade','run'].map($);controls.forEach(el=>el.disabled=true);$('log').textContent='';$('result').value='';lastResult=null;const t=time();
  try{
   const ep=$('ep').value,mode=$('mode').value;status('ONNX Runtime 初期化');await runtime(ep);let boxes;
-  if(mode==='page'){const det=await model('det');status('行検出中');await yieldUI();boxes=sortLines(await detect(det),$('order').value);}
+  if(mode==='page'){const det=await model('det');status('行検出中');await yieldUI();boxes=readingOrder(await detect(det),$('order').value);}
   else boxes=[{x1:0,y1:0,x2:source.width,y2:source.height}];
   drawBoxes(boxes);log('lines: '+boxes.length);
   if(!boxes.length)throw Error('文字行が検出されません。1行画像モードも試してください。');
-  const rec=await model('rec'),rt=time();
-  for(let i=0;i<boxes.length;i++){status('文字認識 '+(i+1)+' / '+boxes.length);await yieldUI();boxes[i].text=await recognize(rec,boxes[i]);$('result').value=boxes.slice(0,i+1).map(b=>b.text).join('\n');}
+  const rt=time(),simple=$('cascade').value==='simple';
+  const read=async(tier,b)=>recognize(await model(tier===100?'rec':'rec'+tier),b);
+  for(let i=0;i<boxes.length;i++){status('文字認識 '+(i+1)+' / '+boxes.length);await yieldUI();const result=await recognizeCascade(boxes[i],read,{simple});boxes[i].text=result.text;boxes[i].recognition=result.trace;log('line '+(i+1)+' cascade '+result.trace.map(x=>x.tier+(x.part?':'+x.part:'')+'('+x.length+')').join(' -> '));$('result').value=boxes.slice(0,i+1).map(b=>b.text).join('\n');}
   const total=Math.round(time()-t);log('PARSeq '+Math.round(time()-rt)+' ms; total '+total+' ms; requested EP '+ep);
-  lastResult={version:'2.0.0',revision,requestedEP:ep,mode,width:source.width,height:source.height,elapsedMs:total,lines:boxes,text:$('result').value};
+  lastResult={version:'2.0.0',revision,requestedEP:ep,mode,recognitionMode:simple?'simple':'cascade',width:source.width,height:source.height,elapsedMs:total,lines:boxes,text:$('result').value};
   status('完了: '+boxes.length+' 行 / '+total+' ms','done');
  }catch(e){log(e.stack||String(e));status(String(e),'error');}finally{controls.forEach(el=>el.disabled=false);}
 };

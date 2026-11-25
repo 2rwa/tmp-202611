@@ -98,7 +98,7 @@ async function main(){
   await feature('06-two-column-order',async()=>{
    const lines=[{text:'第一段の一行目',x:30,y:45},{text:'第一段の二行目',x:30,y:115},{text:'第二段の一行目',x:580,y:45},{text:'第二段の二行目',x:580,y:115}];
    return accuracy(await image('columns',{w:1120,h:350,lines}),lines.map(l=>l.text).join('\n'),{order:'horizontal',max:0});
-  },{candidate:true});
+  });
   for(const [id,file,expected,order] of [
     ['07-handwritten-horizontal','yokogaki2026-04-24-103617.png','つれづれなるままに日くらし硯にむかひて','horizontal'],
     ['08-handwritten-vertical','tategaki2026-04-24-094138.png','春はあけぼのやうやう白くなりゆく','vertical']
@@ -140,6 +140,15 @@ async function main(){
    await page.locator('#file').setInputFiles([a,b]);await page.waitForFunction(()=>document.querySelector('#status').dataset.state==='ready');await page.locator('#mode').selectOption('page');await runOCR();
    assert.match(await page.locator('#result').inputValue(),/FIRST IMAGE/);await page.locator('#page-next').click();assert.match(await page.locator('#result').inputValue(),/SECOND IMAGE/);await page.locator('#page-prev').click();assert.match(await page.locator('#result').inputValue(),/FIRST IMAGE/);
   },{requires:['#page-next','#page-prev']});
+  await feature('18-cascade-models',async()=>{
+   await page.locator('#sample').click();await page.locator('#mode').selectOption('page');await page.locator('#order').selectOption('auto');await page.locator('#cascade').selectOption('cascade');
+   try{const out=await runOCR(),j=await json('cascade');assert.equal(j.recognitionMode,'cascade');assert.equal(j.lines.length,3);assert.ok(cer(out.actual,sample)<=.08,JSON.stringify(out.actual));assert.ok(j.lines.every(b=>b.recognition.length>0));assert.ok(j.lines.some(b=>b.recognition[0].tier<100),'detector never selected short model');assert.match(out.log,/rec(30|50) image input:/);return {...out,tiers:j.lines.map(b=>b.recognition)};}finally{await page.locator('#cascade').selectOption('simple');}
+  },{requires:['#cascade']});
+  await feature('19-long-line',async()=>{
+   const expected='日本語の文字認識を試します。'.repeat(9);
+   const file=await image('long-line',{w:expected.length*42+40,h:70,lines:[{text:expected,x:10,y:10}]});
+   const out=await accuracy(file,expected,{mode:'line',max:.12});const j=await json('long-line');assert.ok(j.lines[0].recognition.some(x=>x.part==='left'));assert.ok(j.lines[0].recognition.some(x=>x.part==='right'));return out;
+  },{candidate:true});
   await feature('16-cache-no-model-download',async()=>{
    await page.reload();await page.locator('#run').waitFor();await page.route('**/*.onnx',route=>route.abort());try{await page.locator('#sample').click();await page.locator('#mode').selectOption('page');const out=await runOCR();assert.equal(out.actual,sample);assert.equal(network.filter(r=>/\.onnx$/.test(r.url)).length,0);return out;}finally{await page.unroute('**/*.onnx');}
   });
