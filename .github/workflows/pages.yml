@@ -75,12 +75,7 @@ jobs:
           node --check fm-lab/fit-worker.mjs
       - name: Test FM Lab in Chromium
         run: node tests/fm-lab.browser.cjs
-      - name: Test real NDLOCR v2 WASM inference before Pages deployment
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y fonts-noto-cjk
-          node --check ndlocr-lite-v2/app.mjs
-          node ndlocr-lite-v2/smoke.cjs
+      # NDLOCR is tested independently by ndlocr-lite-v2.yml; failures must not block experimental Pages releases.
       - name: Test PFML3 prompts and glossary
         run: node tests/translate.test.cjs
       - name: Build translator regression bundle
@@ -152,7 +147,6 @@ jobs:
           cp -r fm-lab dist/fm-lab
           mkdir -p dist/ndlocr-lite-v2
           cp ndlocr-lite-v2/{index.html,app.mjs} dist/ndlocr-lite-v2/
-          node --check dist/ndlocr-lite-v2/app.mjs
           # Preserve the last successfully published translator if native Safari
           # validation has not produced a new runtime. Never deploy the mock.
           rm -rf dist/translate
