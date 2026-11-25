@@ -92,7 +92,12 @@ function imageShapeFromONNX(buffer,inputName){
 }
 async function model(key){
  if(sessions[key])return sessions[key];
- const spec=specs[key], url=raw+'model/'+spec.file;
+ let spec=specs[key],url=raw+'model/'+spec.file;
+ if(key==='det'&&params.get('detpatch')==='1'){
+  const r=await fetch('./det-patch.json');if(!r.ok)throw Error('Patched model manifest HTTP '+r.status);
+  const m=await r.json();if(!m.cpuParity||m.sourceSha256!==spec.sha||!(/^[a-f0-9]{64}$/.test(m.sha256)))throw Error('Unverified detector patch');
+  spec={file:'det-patched.onnx',sha:m.sha256};url=new URL('./det-patched.onnx',location.href).href;log('using CPU-parity-validated integral MatMul patch');
+ }
  status('モデル取得: '+spec.file);
  let cache;try{cache=await caches.open('ndlocr-v2-'+revision);}catch{}
  let bytes;

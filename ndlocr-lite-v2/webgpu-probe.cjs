@@ -3,7 +3,7 @@ const {spawn}=require('node:child_process');
 const fs=require('node:fs/promises');
 const assert=require('node:assert/strict');
 const version=process.env.ORT_VERSION||'1.22.0',opt=process.env.ORT_OPT||'all';
-const url='http://127.0.0.1:8767/ndlocr-lite-v2/?ort='+version+'&opt='+opt;
+const url='http://127.0.0.1:8767/ndlocr-lite-v2/?ort='+version+'&opt='+opt+(process.env.DET_PATCH==='1'?'&detpatch=1':'');
 const expected='国立国会図書館\n日本語の文字認識を試します。\nNDLOCR Lite 2.0';
 const flags=['--enable-unsafe-webgpu','--enable-features=Vulkan','--use-vulkan=swiftshader','--disable-vulkan-fallback-to-gl-for-testing','--use-webgpu-adapter=swiftshader','--enable-webgpu-developer-features','--enable-dawn-features=allow_unsafe_apis','--disable-dawn-features=use_dxc','--use-gpu-in-tests','--enable-unsafe-swiftshader'];
 const results=[];let browser,server;
