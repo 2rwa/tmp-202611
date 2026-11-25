@@ -41,3 +41,33 @@ export function readingOrder(boxes,order='auto'){
  }
  return visit(boxes);
 }
+
+// Python character_inclusion.py: longest multicodepoint mappings first,
+// then a single translation pass; do not recursively normalize replacements.
+export function inclusionFromCSV(csv){
+ const rows=[];let row=[],field='',quoted=false;
+ for(let i=0;i<csv.length;i++){
+  const c=csv[i];
+  if(quoted){if(c==='"'){if(csv[i+1]==='"'){field+='"';i++;}else quoted=false;}else field+=c;}
+  else if(c==='"'&&field==='')quoted=true;
+  else if(c===','){row.push(field);field='';}
+  else if(c==='\n'||c==='\r'){if(c==='\r'&&csv[i+1]==='\n')i++;row.push(field);if(row.some(x=>x!==''))rows.push(row);row=[];field='';}
+  else field+=c;
+ }
+ if(quoted)throw Error('Unterminated CSV field');
+ if(row.length||field){row.push(field);rows.push(row);}
+ const header=rows.shift();if(!header||header.length!==4||!['source','target','source_codepoints','target_codepoints'].every(x=>header.includes(x)))throw Error('Unexpected inclusion CSV columns');
+ const from=header.indexOf('source'),to=header.indexOf('target'),single=new Map(),multi=new Map(),seen=new Set();
+ for(const r of rows){if(r.length!==4||!r[from]||seen.has(r[from]))throw Error('Invalid or duplicate inclusion mapping');seen.add(r[from]);(codepoints(r[from])===1?single:multi).set(r[from],r[to]);}
+ const escape=s=>s.replace(/[.*+?^$\{\}()|[\]\\]/g,'\\$&');
+ const pattern=multi.size?new RegExp([...multi.keys()].sort((a,b)=>codepoints(b)-codepoints(a)).map(escape).join('|'),'gu'):null;
+ return {size:seen.size,apply(text){if(pattern)text=text.replace(pattern,s=>multi.get(s));return Array.from(text,c=>single.has(c)?single.get(c):c).join('');}};
+}
+export function cropRect(a,b,width,height){
+ const clamp=(v,max)=>Math.max(0,Math.min(max,v));
+ const x1=clamp(Math.floor(Math.min(a.x,b.x)),width),y1=clamp(Math.floor(Math.min(a.y,b.y)),height),x2=clamp(Math.ceil(Math.max(a.x,b.x)),width),y2=clamp(Math.ceil(Math.max(a.y,b.y)),height);
+ return x2-x1>=4&&y2-y1>=4?{x1,y1,x2,y2}:null;
+}
+export function cropPoint(clientX,clientY,rect,width,height){
+ return {x:(clientX-rect.left)*width/rect.width,y:(clientY-rect.top)*height/rect.height};
+}

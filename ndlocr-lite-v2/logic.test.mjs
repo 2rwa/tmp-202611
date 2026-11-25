@@ -14,3 +14,13 @@ assert.deepEqual(readingOrder([cols[2],cols[1],cols[3],cols[0]],'horizontal').ma
 assert.deepEqual(readingOrder([box('left',20,20,30,300),box('right',200,20,30,300)],'vertical').map(x=>x.id),['right','left']);
 assert.deepEqual(readingOrder([box('bottom',20,110),box('top',20,20)],'auto').map(x=>x.id),['top','bottom']);
 console.log('cascade and XY-cut logic tests passed');
+
+import {inclusionFromCSV,cropRect,cropPoint} from './ocr-logic.mjs';
+const csv='source,target,source_codepoints,target_codepoints\r\n國,国,U+570B,U+56FD\r\n學,学,U+5B78,U+5B66\r\n"ab",國,x,x\r\n"abc",學,x,x\r\n"x,y","""",x,x\r\n';
+const incl=inclusionFromCSV(csv);
+assert.equal(incl.size,5);assert.equal(incl.apply('abc ab 國學 x,y'),'学 国 国学 "');
+assert.throws(()=>inclusionFromCSV(csv+'國,国,x,x\n'),/duplicate/);
+assert.deepEqual(cropPoint(50,45,{left:10,top:20,width:100,height:50},1000,500),{x:400,y:250});
+assert.deepEqual(cropRect({x:99.8,y:80},{x:-10,y:10.2},80,100),{x1:0,y1:10,x2:80,y2:80});
+assert.equal(cropRect({x:2,y:2},{x:3,y:3},100,100),null);
+console.log('inclusion and crop logic tests passed');

@@ -1,4 +1,4 @@
-import {recognizeCascade,readingOrder} from './ocr-logic.mjs';
+import {recognizeCascade,readingOrder,inclusionFromCSV,cropRect,cropPoint} from './ocr-logic.mjs';
 // Experimental JS port of preprocessing and decoding in NDL's NDLOCR-Lite 2.0.0 (CC BY 4.0).
 const $=id=>document.getElementById(id);
 const revision='1f3adc7af311af1ce4cbbd4d9089f30781d01313';
@@ -13,17 +13,31 @@ const specs={
 const source=document.createElement('canvas'), preview=$('preview');
 let ort, charset, activeEP, sessions={}, lastResult=null;
 const modelShapes=new WeakMap();
+let selection=null,dragStart=null,cropActive=false,inclusion=null,inclusionPromise=null;
+const fullRegion=()=>({x1:0,y1:0,x2:source.width,y2:source.height});
+async function getInclusion(){if(inclusion)return inclusion;if(!inclusionPromise)inclusionPromise=(async()=>{const r=await fetch(raw+'config/character_inclusion_mapping.csv');if(!r.ok)throw Error('character inclusion HTTP '+r.status);const m=inclusionFromCSV(await r.text());log('character inclusion: '+m.size+' mappings');return inclusion=m;})().finally(()=>{inclusionPromise=null;});return inclusionPromise;}
+function clearResult(){lastResult=null;$('result').value='';$('save').disabled=true;}
+function paintSelection(r=selection){const ctx=preview.getContext('2d');ctx.drawImage(source,0,0);if(!r)return;ctx.fillStyle='rgba(0,0,0,.35)';ctx.fillRect(0,0,source.width,r.y1);ctx.fillRect(0,r.y2,source.width,source.height-r.y2);ctx.fillRect(0,r.y1,r.x1,r.y2-r.y1);ctx.fillRect(r.x2,r.y1,source.width-r.x2,r.y2-r.y1);ctx.strokeStyle='#0284c7';ctx.lineWidth=Math.max(2,source.width/500);ctx.strokeRect(r.x1,r.y1,r.x2-r.x1,r.y2-r.y1);}
+function cropState(on){cropActive=on;$('crop').setAttribute('aria-pressed',String(on));preview.style.cursor=on?'crosshair':'';preview.style.touchAction=on?'none':'';}
+function updateSelection(r){selection=r;clearResult();paintSelection();$('crop-info').textContent=r?`範囲: ${r.x1},${r.y1} / ${r.x2-r.x1} × ${r.y2-r.y1}`:'画像全体';status('画像準備完了','ready');}
+$('crop').onclick=()=>{cropState(!cropActive);if(cropActive)paintSelection();};
+$('crop-clear').onclick=()=>{cropState(false);updateSelection(null);};
+const pointer=e=>{const r=preview.getBoundingClientRect(),s=getComputedStyle(preview);const l=parseFloat(s.borderLeftWidth)||0,t=parseFloat(s.borderTopWidth)||0,rr=parseFloat(s.borderRightWidth)||0,b=parseFloat(s.borderBottomWidth)||0;return cropPoint(e.clientX,e.clientY,{left:r.left+l,top:r.top+t,width:r.width-l-rr,height:r.height-t-b},source.width,source.height);};
+preview.addEventListener('pointerdown',e=>{if(!cropActive||$('run').disabled||!e.isPrimary)return;dragStart=pointer(e);preview.setPointerCapture(e.pointerId);e.preventDefault();});
+preview.addEventListener('pointermove',e=>{if(dragStart&&e.isPrimary)paintSelection(cropRect(dragStart,pointer(e),source.width,source.height));});
+preview.addEventListener('pointerup',e=>{if(!dragStart||!e.isPrimary)return;const r=cropRect(dragStart,pointer(e),source.width,source.height);dragStart=null;cropState(false);if(r)updateSelection(r);else paintSelection();});
+preview.addEventListener('pointercancel',()=>{dragStart=null;paintSelection();});
 const log=msg=>{$('log').textContent+=msg+'\n';};
 function status(msg,state='running'){$('status').textContent=msg;$('status').dataset.state=state;}
 const time=()=>performance.now();
 const yieldUI=()=>new Promise(resolve=>setTimeout(resolve,0));
 const canvas=(w,h)=>Object.assign(document.createElement('canvas'),{width:w,height:h});
-function showSource(){preview.width=source.width;preview.height=source.height;preview.getContext('2d').drawImage(source,0,0);$('run').disabled=false;status('画像準備完了','ready');}
+function showSource(){preview.width=source.width;preview.height=source.height;cropState(false);dragStart=null;updateSelection(null);$('run').disabled=false;}
 function drawSample(){source.width=900;source.height=280;const ctx=source.getContext('2d');ctx.fillStyle='white';ctx.fillRect(0,0,900,280);ctx.fillStyle='black';ctx.font='42px sans-serif';ctx.fillText('国立国会図書館',35,85);ctx.fillText('日本語の文字認識を試します。',35,155);ctx.fillText('NDLOCR Lite 2.0',35,225);showSource();}
 $('sample').onclick=drawSample;
 $('file').onchange=async e=>{try{const f=e.target.files[0];if(!f)return;const im=await createImageBitmap(f);if(im.width*im.height>40000000){im.close();throw Error('画像は4000万画素以下にしてください');}source.width=im.width;source.height=im.height;const ctx=source.getContext('2d');ctx.fillStyle='white';ctx.fillRect(0,0,source.width,source.height);ctx.drawImage(im,0,0);im.close();showSource();}catch(e){status(String(e),'error');}};
 async function runtime(ep){
- if(ort&&activeEP===ep)return;
+ if(ort&&activeEP===ep&&charset)return;
  for(const s of Object.values(sessions))await s.release();
  sessions={};
  if(!ort){ort=await import(cdn+'ort.webgpu.min.mjs');ort.env.wasm.wasmPaths=cdn;ort.env.wasm.numThreads=1;ort.env.wasm.proxy=false;}
@@ -91,10 +105,10 @@ async function model(key){
 function tensor(c,transform){const w=c.width,h=c.height,n=w*h,data=c.getContext('2d',{willReadFrequently:true}).getImageData(0,0,w,h).data,out=new Float32Array(3*n);for(let k=0;k<3;k++)for(let i=0;i<n;i++)out[k*n+i]=transform(data[i*4],data[i*4+1],data[i*4+2],k);return new ort.Tensor('float32',out,[1,3,h,w]);}
 const mean=[.485,.456,.406],sd=[.229,.224,.225];
 function suppress(boxes){const area=b=>(b.x2-b.x1)*(b.y2-b.y1);const kept=[];for(const b of [...boxes].sort((a,b)=>area(b)-area(a))){if(kept.some(a=>a.cls===b.cls&&area(a)>area(b)&&Math.max(0,Math.min(a.x2,b.x2)-Math.max(a.x1,b.x1))*Math.max(0,Math.min(a.y2,b.y2)-Math.max(a.y1,b.y1))/area(b)>=.9))continue;kept.push(b);}return kept;}
-async function detect(s){
+async function detect(s,region=fullRegion()){
  const {height:ih,width:iw}=modelShapes.get(s);
- const side=Math.max(source.width,source.height),c=canvas(iw,ih),ctx=c.getContext('2d');
- ctx.fillStyle='black';ctx.fillRect(0,0,iw,ih);ctx.drawImage(source,0,0,iw*source.width/side,ih*source.height/side);
+ const rw=region.x2-region.x1,rh=region.y2-region.y1,side=Math.max(rw,rh),c=canvas(iw,ih),ctx=c.getContext('2d');
+ ctx.fillStyle='black';ctx.fillRect(0,0,iw,ih);ctx.drawImage(source,region.x1,region.y1,rw,rh,0,0,iw*rw/side,ih*rh/side);
  const x=tensor(c,(r,g,b,k)=>(([r,g,b][k]/255)-mean[k])/sd[k]);
  const size=new ort.Tensor('int64',BigInt64Array.from([BigInt(ih),BigInt(iw)]),[1,2]);
  const t=time();const out=await s.run({[s.inputNames[0]]:x,[s.inputNames[1]]:size});
@@ -104,7 +118,7 @@ async function detect(s){
  if(coords.data.length!==scores.data.length*4||labels.data.length!==scores.data.length)throw Error('Unexpected detection tensor shape');
  for(let i=0;i<scores.data.length;i++){
   const score=Number(scores.data[i]),cls=Number(labels.data[i])-1;if(score<=.25||![1,2,3,4,5,16].includes(cls))continue;
-  const a=coords.data.subarray(i*4,i*4+4),x1=clamp(a[0],source.width,iw),y1=clamp(a[1],source.height,ih),x2=clamp(a[2],source.width,iw),y2=clamp(a[3],source.height,ih);
+  const a=coords.data.subarray(i*4,i*4+4),x1=region.x1+clamp(a[0],rw,iw),y1=region.y1+clamp(a[1],rh,ih),x2=region.x1+clamp(a[2],rw,iw),y2=region.y1+clamp(a[3],rh,ih);
   if(x2>x1&&y2>y1)arr.push({x1,y1,x2,y2,score,cls,count:counts?Number(counts.data[i]):100,style:styles?Number(styles.data[i]):0});
  }
  for(const v of o)v.dispose();x.dispose();size.dispose();
@@ -122,21 +136,21 @@ async function recognize(s,b){
  let str='';for(let i=0;i<dims[1];i++){let best=0,score=-Infinity;for(let j=0;j<dims[2];j++){const v=y.data[i*dims[2]+j];if(v>score){score=v;best=j;}}if(best===0)break;str+=charset[best-1];}
  for(const v of Object.values(o))v.dispose();x.dispose();return str.replace(/ ([、。])/g,'$1').replace(/([、。]) /g,'$1');
 }
-function drawBoxes(boxes){const ctx=preview.getContext('2d');ctx.drawImage(source,0,0);ctx.strokeStyle='#e11d48';ctx.fillStyle='#e11d48';ctx.lineWidth=Math.max(2,source.width/500);ctx.font=Math.max(14,source.width/60)+'px sans-serif';for(const [i,b] of boxes.entries()){ctx.strokeRect(b.x1,b.y1,b.x2-b.x1,b.y2-b.y1);ctx.fillText(String(i+1),b.x1,Math.max(15,b.y1));}}
+function drawBoxes(boxes){paintSelection();const ctx=preview.getContext('2d');ctx.strokeStyle='#e11d48';ctx.fillStyle='#e11d48';ctx.lineWidth=Math.max(2,source.width/500);ctx.font=Math.max(14,source.width/60)+'px sans-serif';for(const [i,b] of boxes.entries()){ctx.strokeRect(b.x1,b.y1,b.x2-b.x1,b.y2-b.y1);ctx.fillText(String(i+1),b.x1,Math.max(15,b.y1));}}
 $('run').onclick=async()=>{
- const controls=['file','sample','mode','ep','order','cascade','run'].map($);controls.forEach(el=>el.disabled=true);$('log').textContent='';$('result').value='';lastResult=null;const t=time();
+ const controls=['file','sample','mode','ep','order','cascade','crop','crop-clear','normalize-variants','run'].map($);controls.forEach(el=>el.disabled=true);$('log').textContent='';clearResult();cropState(false);const t=time();
  try{
-  const ep=$('ep').value,mode=$('mode').value;status('ONNX Runtime 初期化');await runtime(ep);let boxes;
-  if(mode==='page'){const det=await model('det');status('行検出中');await yieldUI();boxes=readingOrder(await detect(det),$('order').value);}
-  else boxes=[{x1:0,y1:0,x2:source.width,y2:source.height}];
+  const ep=$('ep').value,mode=$('mode').value;status('ONNX Runtime 初期化');await runtime(ep);const region=selection||fullRegion(),normalize=$('normalize-variants').checked,mapper=normalize?await getInclusion():null;let boxes;
+  if(mode==='page'){const det=await model('det');status('行検出中');await yieldUI();boxes=readingOrder(await detect(det,region),$('order').value);}
+  else boxes=[{...region}];
   drawBoxes(boxes);log('lines: '+boxes.length);
   if(!boxes.length)throw Error('文字行が検出されません。1行画像モードも試してください。');
   const rt=time(),simple=$('cascade').value==='simple';
   const read=async(tier,b)=>recognize(await model(tier===100?'rec':'rec'+tier),b);
-  for(let i=0;i<boxes.length;i++){status('文字認識 '+(i+1)+' / '+boxes.length);await yieldUI();const result=await recognizeCascade(boxes[i],read,{simple});boxes[i].text=result.text;boxes[i].recognition=result.trace;log('line '+(i+1)+' cascade '+result.trace.map(x=>x.tier+(x.part?':'+x.part:'')+'('+x.length+')').join(' -> '));$('result').value=boxes.slice(0,i+1).map(b=>b.text).join('\n');}
+  for(let i=0;i<boxes.length;i++){status('文字認識 '+(i+1)+' / '+boxes.length);await yieldUI();const result=await recognizeCascade(boxes[i],read,{simple});boxes[i].rawText=result.text;boxes[i].text=mapper?mapper.apply(result.text):result.text;boxes[i].recognition=result.trace;log('line '+(i+1)+' cascade '+result.trace.map(x=>x.tier+(x.part?':'+x.part:'')+'('+x.length+')').join(' -> '));$('result').value=boxes.slice(0,i+1).map(b=>b.text).join('\n');}
   const total=Math.round(time()-t);log('PARSeq '+Math.round(time()-rt)+' ms; total '+total+' ms; requested EP '+ep);
-  lastResult={version:'2.0.0',revision,requestedEP:ep,mode,recognitionMode:simple?'simple':'cascade',width:source.width,height:source.height,elapsedMs:total,lines:boxes,text:$('result').value};
-  status('完了: '+boxes.length+' 行 / '+total+' ms','done');
+  lastResult={version:'2.0.0',revision,requestedEP:ep,mode,recognitionMode:simple?'simple':'cascade',normalizedVariants:normalize,region,width:source.width,height:source.height,elapsedMs:total,lines:boxes,text:$('result').value};
+  $('save').disabled=false;status('完了: '+boxes.length+' 行 / '+total+' ms','done');
  }catch(e){log(e.stack||String(e));status(String(e),'error');}finally{controls.forEach(el=>el.disabled=false);}
 };
 $('copy').onclick=async()=>{try{await navigator.clipboard.writeText($('result').value);}catch(e){log(String(e));}};
