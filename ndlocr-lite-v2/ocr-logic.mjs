@@ -113,3 +113,12 @@ export function tcySegments(data,w,h){
  const result=[];for(let i=0;i<blocks.length;){if(flags[i]){const [a,b]=blocks[i],m=Math.max(5,Math.floor((b-a)*.5));result.push({y1:Math.max(0,a-m),y2:Math.min(h,b+m),horizontal:true});i++;}else{const start=i;while(i<blocks.length&&!flags[i])i++;result.push({y1:start>0?blocks[start-1][1]:blocks[start][0],y2:i<blocks.length?blocks[i][0]:blocks[i-1][1],horizontal:false});}}
  return result.filter(x=>x.y2>x.y1);
 }
+
+/** Per-model dispatch evidence, not a claim that every ONNX operator used GPU. */
+export function modelGPUProof(ep,models){
+ const actual=Object.entries(models||{}),det=actual.find(([k])=>k==='det')?.[1],rec=actual.filter(([k])=>k.startsWith('rec')).map(([,m])=>m);
+ const wantsDet=ep==='webgpu-det'||ep==='webgpu',wantsRec=ep==='webgpu-rec'||ep==='webgpu';
+ const valid=(m,wanted)=>!!m&&m.calls>0&&(wanted?m.gpuCalls===m.calls&&m.dispatch>0&&m.submit>0:m.dispatch===0&&m.submit===0);
+ const detOK=valid(det,wantsDet),recOK=rec.length>0&&rec.every(m=>valid(m,wantsRec));
+ return {detOK,recOK,verified:detOK&&recOK};
+}

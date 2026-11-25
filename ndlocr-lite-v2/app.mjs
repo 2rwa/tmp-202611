@@ -1,5 +1,5 @@
 import {decodeTable,assignTableLines,tableHTML,escapeHTML} from './table-logic.mjs';
-import {recognizeCascade,readingOrder,inclusionFromCSV,cropRect,cropPoint,suppressLines,inkBounds,tcySegments,codepoints} from './ocr-logic.mjs';
+import {recognizeCascade,readingOrder,inclusionFromCSV,cropRect,cropPoint,suppressLines,inkBounds,tcySegments,codepoints,modelGPUProof} from './ocr-logic.mjs';
 // Experimental JS port of preprocessing and decoding in NDL's NDLOCR-Lite 2.0.0 (CC BY 4.0).
 const $=id=>document.getElementById(id);
 const revision='1f3adc7af311af1ce4cbbd4d9089f30781d01313';
@@ -34,7 +34,7 @@ function instrumentGPU(){
 instrumentGPU();
 async function runModel(session,feeds){
  const t=time(),before=gpuTrace.dispatch,sub=gpuTrace.submit,key=modelKeys.get(session)||'unknown';
- try{return await session.run(feeds);}finally{if(runMetrics){const m=runMetrics.models[key]||={ms:0,calls:0,dispatch:0,submit:0};m.ms+=time()-t;m.calls++;m.dispatch+=gpuTrace.dispatch-before;m.submit+=gpuTrace.submit-sub;}}
+ try{return await session.run(feeds);}finally{if(runMetrics){const m=runMetrics.models[key]||={ms:0,calls:0,gpuCalls:0,dispatch:0,submit:0};m.ms+=time()-t;m.calls++;const d=gpuTrace.dispatch-before,q=gpuTrace.submit-sub;m.dispatch+=d;m.submit+=q;if(d>0&&q>0)m.gpuCalls++;}}
 }
 
 let selection=null,dragStart=null,cropActive=false,inclusion=null,inclusionPromise=null;
@@ -214,7 +214,7 @@ function renderBench(rows){
  const body=$('bench-results');body.replaceChildren();
  for(const r of rows){
   const tr=document.createElement('tr'),f=x=>Number.isFinite(x)?Math.round(x).toLocaleString():'—';
-  for(const v of [r.ep,r.state,f(r.coldMs),f(r.warmMs),f(r.detMs),f(r.recMs),f(r.dispatch),r.speedup?r.speedup.toFixed(2)+'×':'—',r.matches===null?'—':r.matches?'一致':'不一致']){
+  for(const v of [r.ep,r.state,f(r.coldMs),f(r.warmMs),f(r.detMs),f(r.recMs),f(r.dispatch),r.speedup?(r.speedup.toFixed(2)+'×'+(r.speedupVerified?'':'（未確認）')):'—',r.matches===null?'—':r.matches?'一致':'不一致']){
    const td=document.createElement('td');td.textContent=v;tr.append(td);
   }
   body.append(tr);
@@ -240,7 +240,7 @@ async function runBenchmark(){
     if(!r){row.state='エラー';row.error=$('status').textContent;row.log=$('log').textContent;break;}
     const models=r.metrics.models,det=models.det?.ms||0,rec=Object.entries(models).filter(([k])=>k.startsWith('rec')).reduce((n,[,m])=>n+m.ms,0);
     if(ep==='wasm'&&i===0)baseline.text=r.text;
-    row.runs.push({cold:i===0,elapsedMs:r.elapsedMs,wallMs:wall,detMs:det,recMs:rec,dispatch:gpuTrace.dispatch-before,submit:gpuTrace.submit-sub,models,matches:baseline.text===null?null:r.text===baseline.text,lines:r.lines.length,characters:Array.from(r.text).length});
+    row.runs.push({cold:i===0,elapsedMs:r.elapsedMs,wallMs:wall,detMs:det,recMs:rec,dispatch:gpuTrace.dispatch-before,submit:gpuTrace.submit-sub,models,modelGPUProof:modelGPUProof(ep,models),matches:baseline.text===null?null:r.text===baseline.text,lines:r.lines.length,characters:Array.from(r.text).length});
    }
    row.devices=gpuTrace.devices.slice(deviceStart);row.gpuErrors=gpuTrace.errors.slice(errorStart);
    row.coldMs=row.runs[0]?.elapsedMs??null;
@@ -248,11 +248,12 @@ async function runBenchmark(){
    if(warm.length===count&&row.state!=='エラー'){
     row.warmMs=median(warm.map(x=>x.elapsedMs));row.detMs=median(warm.map(x=>x.detMs));row.recMs=median(warm.map(x=>x.recMs));row.dispatch=median(warm.map(x=>x.dispatch));
     row.matches=baseline.text===null?null:warm.every(x=>x.matches===true);
-    row.gpuVerified=ep!=='wasm'&&warm.every(x=>x.dispatch>0&&x.submit>0)&&row.gpuErrors.length===0;
+    row.gpuVerified=ep!=='wasm'&&warm.every(x=>x.modelGPUProof.verified)&&row.gpuErrors.length===0;
     row.appleGPU=row.gpuVerified&&row.devices.length>0&&row.devices.every(d=>/apple/i.test([d.vendor,d.architecture,d.description].join(' '))&&d.isFallbackAdapter!==true&&!/swiftshader|software/i.test([d.vendor,d.architecture,d.description].join(' ')));
     if(ep==='wasm')baseline.ms=row.warmMs;
     if(ep!=='wasm'&&baseline.ms&&row.warmMs)row.speedup=baseline.ms/row.warmMs;
-    row.state=ep==='wasm'?'完了':row.gpuVerified?'GPU演算確認':'GPU未確認';
+    row.state=row.matches===false?'認識結果不一致':ep==='wasm'?'完了':row.gpuVerified?'モデル別GPU確認':'GPU未確認';
+    row.speedupVerified=row.gpuVerified&&row.matches===true&&Number.isFinite(row.speedup);
    }
    renderBench(rows);
   }

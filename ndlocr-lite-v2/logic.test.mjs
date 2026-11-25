@@ -35,3 +35,12 @@ assert.equal(inkBounds(raster(100,50,[]),100,50),null);
 const seg=tcySegments(raster(40,140,[[5,5,35,40],[5,60,16,78],[23,60,34,78],[5,95,35,130]]),40,140);
 assert.equal(seg.length,3);assert.equal(seg[1].horizontal,true);assert.equal(seg[0].horizontal,false);
 console.log('line dedup, ink bounds and TCY projection tests passed');
+
+import {modelGPUProof} from './ocr-logic.mjs';
+const gpuMetric={calls:2,gpuCalls:2,dispatch:20,submit:4},cpuMetric={calls:2,gpuCalls:0,dispatch:0,submit:0};
+assert.deepEqual(modelGPUProof('webgpu',{det:gpuMetric,rec:gpuMetric}),{detOK:true,recOK:true,verified:true});
+assert.equal(modelGPUProof('webgpu',{det:gpuMetric,rec:cpuMetric}).verified,false);
+assert.equal(modelGPUProof('webgpu-rec',{det:cpuMetric,rec30:gpuMetric,rec50:{...gpuMetric,gpuCalls:1}}).verified,false);
+assert.equal(modelGPUProof('webgpu-det',{det:gpuMetric,rec:cpuMetric}).verified,true);
+assert.equal(modelGPUProof('wasm',{det:cpuMetric,rec:cpuMetric}).verified,true);
+console.log('Per-model GPU evidence tests passed');
