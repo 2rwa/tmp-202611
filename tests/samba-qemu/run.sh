@@ -62,7 +62,6 @@ version: 2
 ethernets:
   lan:
     match: {macaddress: "$lanmac"}
-    set-name: lan0
     addresses: [$addr/24]
     dhcp4: false
     dhcp6: false
@@ -70,7 +69,6 @@ ethernets:
     optional: true
   wan:
     match: {macaddress: "$wanmac"}
-    set-name: wan0
     dhcp4: true
     dhcp6: false
 EOF
@@ -83,12 +81,20 @@ EOF
   pids+=("$!")
 }
 guest() { local port="$1"; shift; ssh "${opts[@]}" -p "$port" runner@127.0.0.1 "$@"; }
+lan_iface() {
+  local p="$1" suffix
+  case "$p" in 22011) suffix=11;; 22012) suffix=12;; *) return 1;; esac
+  guest "$p" "ip -o link | awk '/52:54:00:77:00:$suffix/ {sub(/:$/, \"\", \$2); print \$2}'"
+}
 ready() {
-  local p="$1" addr
-  case "$p" in 22011) addr=10.77.0.11;; 22012) addr=10.77.0.12;; *) return 1;; esac
+  local p="$1" addr suffix iface
+  case "$p" in 22011) addr=10.77.0.11; suffix=11;; 22012) addr=10.77.0.12; suffix=12;; *) return 1;; esac
   for i in {1..180}; do
     if guest "$p" true 2>/dev/null; then
-      guest "$p" "rc=0; sudo cloud-init status --wait --long || rc=\$?; echo cloud-init-exit=\$rc; ip -br link; ip -br -4 addr; ip -4 route; cat /etc/os-release; sudo networkctl list --no-pager; if [ \"\$rc\" -ne 0 ]; then sudo journalctl -u systemd-networkd -u systemd-networkd-wait-online --no-pager -n 80; fi; test \"\$rc\" -le 2 && ip -o -4 addr show dev lan0 | grep -F '$addr/24' && ip -4 route show default | grep -q 'dev wan0' && id runner"
+      guest "$p" 'rc=0; sudo cloud-init status --wait --long || rc=$?; echo cloud-init-exit=$rc; ip -br link; ip -br -4 addr; ip -4 route; cat /etc/os-release; sudo networkctl list --no-pager; if [ "$rc" -ne 0 ]; then sudo journalctl -u systemd-networkd -u systemd-networkd-wait-online --no-pager -n 80; fi; [ "$rc" = 0 ] || [ "$rc" = 2 ]'
+      iface="$(lan_iface "$p")"
+      [[ -n "$iface" ]]
+      guest "$p" "set -eu; ip -o -4 addr show dev '$iface' | grep -F '$addr/24'; wan=\$(ip -4 route show default | awk 'NR==1{print \$5}'); test -n \"\$wan\"; test \"\$(cat /sys/class/net/\$wan/address)\" = '52:54:00:78:00:$suffix'; id runner"
       return
     fi
     sleep 5
@@ -124,10 +130,13 @@ for p in 22011 22012; do
 done
 sha256sum "$source_script"
 base='sudo bash /tmp/setup-samba-host.sh'
-server() { interactive "$1" "$base server --expected-host smb-$2 --iface lan0 --allow-network 10.77.0.0/24 --enable-mdns --replace-smb-conf"; }
-client() { interactive "$1" "$base client --expected-host smb-$2 --iface lan0 --peer smb-$3"; }
+server() { interactive "$1" "$base server --expected-host smb-$2 --iface $(lan_iface "$1") --allow-network 10.77.0.0/24 --enable-mdns --replace-smb-conf"; }
+client() { interactive "$1" "$base client --expected-host smb-$2 --iface $(lan_iface "$1") --peer smb-$3"; }
+echo 'TEST direct isolated LAN connectivity'
+guest 22011 "ip -4 route get 10.77.0.12; ping -c 2 -W 3 10.77.0.12"
+guest 22012 "ip -4 route get 10.77.0.11; ping -c 2 -W 3 10.77.0.11"
 echo 'TEST wrong-host rejection'
-if guest 22011 "$base status --expected-host wrong --iface lan0"; then exit 1; fi
+if guest 22011 "$base status --expected-host wrong --iface $(lan_iface 22011)"; then exit 1; fi
 echo 'TEST A server / B clean client using mDNS'
 server 22011 a
 fail=0
@@ -148,7 +157,7 @@ client 22012 b a
 for spec in '22011 a b' '22012 b a'; do
   read -r p n peer <<<"$spec"
   echo "TEST $n status, CIFS, permissions, auth rejection, file I/O"
-  guest "$p" "$base status --expected-host smb-$n --iface lan0 --peer smb-$peer"
+  guest "$p" "$base status --expected-host smb-$n --iface $(lan_iface "$p") --peer smb-$peer"
   guest "$p" "set -eu; mp=/mnt/peers/smb-$peer/share; ls \"\$mp\"; findmnt -n -t cifs --mountpoint \"\$mp\"; test \"\$(sudo stat -c '%a %u' /etc/samba/credentials/smb-$peer.cred)\" = '600 0'; test \"\$(grep -c ' /mnt/peers/smb-$peer/share cifs ' /etc/fstab)\" = 1; sudo testparm -s >/dev/null; systemctl is-active smbd; ss -ltn '( sport = :445 )'; if smbclient //smb-$peer.local/share -N -c ls; then exit 1; fi; if sudo smbclient //smb-$peer.local/share -A /etc/samba/credentials/smb-$peer.cred --option='client min protocol=SMB2_10' --option='client max protocol=SMB2_10' -c ls; then exit 1; fi; dd if=/dev/urandom of=/var/tmp/payload-$n bs=1M count=8 status=none; cp /var/tmp/payload-$n \"\$mp/$n.bin\"; cmp /var/tmp/payload-$n \"\$mp/$n.bin\"; mkdir \"\$mp/$n-dir\"; mv \"\$mp/$n.bin\" \"\$mp/$n-dir/data.bin\"; sha256sum /var/tmp/payload-$n"
 done
 for spec in '22011 a b 22012' '22012 b a 22011'; do
