@@ -12,3 +12,6 @@
 - ローカル: リポジトリ直下で `python3 -m http.server 8000` → /ndlocr-lite-v2/
 
 出典・改変元: [国立国会図書館 NDLOCR-Lite](https://github.com/ndl-lab/ndlocr-lite/tree/1f3adc7af311af1ce4cbbd4d9089f30781d01313) (CC BY 4.0)。モデル・文字集合は公式のまま。JavaScript移植・UIは非公式。依存モデル/ライブラリについては上流のLICENCE_DEPENDENCEIESも参照。
+
+## Regression tests
+See [TESTS.md](TESTS.md) for the feature contract, fixtures and test command. OCR regression workflow is independent of Pages deployment.
