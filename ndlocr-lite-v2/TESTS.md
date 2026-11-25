@@ -28,3 +28,5 @@ Cases 18–19: real cascade inference and long horizontal line splitting (explor
 Cases 09–10 implemented; verify actual crop coordinates in original image space, clearing selection invalidates stale output, and normalized JSON retains raw OCR text. Mapping is NDL's official character inclusion CSV (4905 entries at pinned revision), not NFKC. Tests still need real Chromium execution.
 
 Case 20: experimental TCY, mixed vertical text and horizontal digits; compare enabled/disabled output and JSON flag. Baseline quality failure is tracked. Fixes for cases 03–06, 09–10, 17: trim uniform margins in single-line mode; suppress overlapping near-identical line detections across classes. Unit tests cover geometry and TCY projection. TableCenterNet remains unimplemented.
+
+Case 11 enabled: actual TableCenterNet inference, model log, cell count, 3×3 HTML exact contents. table.test.mjs tests synthetic tensors, coordinate mapping, merged-cell HTML and escaping. Experimental single-region table decoder; official relocation and recovery remain pending. TXT/HTML exports now available.

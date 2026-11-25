@@ -1,3 +1,4 @@
+import {decodeTable,assignTableLines,tableHTML,escapeHTML} from './table-logic.mjs';
 import {recognizeCascade,readingOrder,inclusionFromCSV,cropRect,cropPoint,suppressLines,inkBounds,tcySegments,codepoints} from './ocr-logic.mjs';
 // Experimental JS port of preprocessing and decoding in NDL's NDLOCR-Lite 2.0.0 (CC BY 4.0).
 const $=id=>document.getElementById(id);
@@ -5,6 +6,7 @@ const revision='1f3adc7af311af1ce4cbbd4d9089f30781d01313';
 const raw='https://raw.githubusercontent.com/ndl-lab/ndlocr-lite/'+revision+'/src/';
 const cdn='https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/';
 const specs={
+ table:{file:'tablecenternet_s_800_v3.onnx',sha:'fc26e20e0ece97be0d03b495481c33a3982f268966920297061b8c90215cdefa'},
  det:{file:'deim-s-1024x1024-261124.onnx',sha:'f9a41c8453dd687f370bee199fd6d47ecf583cc14f1d839a0b416db39b356e8c'},
  rec30:{file:'parseq-ndl-24x256-30-tiny-499epoch-261124.onnx',sha:'063ec5b3201bce79d56c3ad73b5726cf76ec6a82f42e11a89466ae683755296c'},
  rec50:{file:'parseq-ndl-24x384-50-tiny-278epoch-261124.onnx',sha:'d3dd9e7733aeff5c9f50687c7da6e8d01915a0bf07cfbefe1d9ac58241c61471'},
@@ -16,7 +18,7 @@ const modelShapes=new WeakMap();
 let selection=null,dragStart=null,cropActive=false,inclusion=null,inclusionPromise=null;
 const fullRegion=()=>({x1:0,y1:0,x2:source.width,y2:source.height});
 async function getInclusion(){if(inclusion)return inclusion;if(!inclusionPromise)inclusionPromise=(async()=>{const r=await fetch(raw+'config/character_inclusion_mapping.csv');if(!r.ok)throw Error('character inclusion HTTP '+r.status);const m=inclusionFromCSV(await r.text());log('character inclusion: '+m.size+' mappings');return inclusion=m;})().finally(()=>{inclusionPromise=null;});return inclusionPromise;}
-function clearResult(){lastResult=null;$('result').value='';$('save').disabled=true;}
+function clearResult(){lastResult=null;$('result').value='';$('save').disabled=true;$('export').disabled=true;$('table-preview').replaceChildren();}
 function paintSelection(r=selection){const ctx=preview.getContext('2d');ctx.drawImage(source,0,0);if(!r)return;ctx.fillStyle='rgba(0,0,0,.35)';ctx.fillRect(0,0,source.width,r.y1);ctx.fillRect(0,r.y2,source.width,source.height-r.y2);ctx.fillRect(0,r.y1,r.x1,r.y2-r.y1);ctx.fillRect(r.x2,r.y1,source.width-r.x2,r.y2-r.y1);ctx.strokeStyle='#0284c7';ctx.lineWidth=Math.max(2,source.width/500);ctx.strokeRect(r.x1,r.y1,r.x2-r.x1,r.y2-r.y1);}
 function cropState(on){cropActive=on;$('crop').setAttribute('aria-pressed',String(on));preview.style.cursor=on?'crosshair':'';preview.style.touchAction=on?'none':'';}
 function updateSelection(r){selection=r;clearResult();paintSelection();$('crop-info').textContent=r?`範囲: ${r.x1},${r.y1} / ${r.x2-r.x1} × ${r.y2-r.y1}`:'画像全体';status('画像準備完了','ready');}
@@ -138,9 +140,19 @@ async function recognize(s,b,{forceHorizontal=false}={}){
 function regionPixels(b){return source.getContext('2d',{willReadFrequently:true}).getImageData(b.x1,b.y1,b.x2-b.x1,b.y2-b.y1).data;}
 function trimLine(b){const r=inkBounds(regionPixels(b),b.x2-b.x1,b.y2-b.y1);return r?{...b,x1:b.x1+r.x1,y1:b.y1+r.y1,x2:b.x1+r.x2,y2:b.y1+r.y2}:b;}
 async function readTCY(s,b){const original=await recognize(s,b);if(!$('enable-tcy').checked||b.y2-b.y1<=b.x2-b.x1||!original)return original;const segments=tcySegments(regionPixels(b),b.x2-b.x1,b.y2-b.y1);if(!segments.length)return original;let result='';for(const seg of segments)result+=await recognize(s,{...b,y1:b.y1+seg.y1,y2:b.y1+seg.y2},{forceHorizontal:seg.horizontal});log('TCY candidates '+segments.filter(x=>x.horizontal).length+'; original '+codepoints(original)+' -> '+codepoints(result));return codepoints(result)>codepoints(original)?result:original;}
+async function inferTable(region,lines){
+ const s=await model('table'),{height:ih,width:iw}=modelShapes.get(s),rw=region.x2-region.x1,rh=region.y2-region.y1,scale=iw/Math.max(rw,rh),c=canvas(iw,ih),ctx=c.getContext('2d');
+ ctx.fillStyle='black';ctx.fillRect(0,0,iw,ih);ctx.drawImage(source,region.x1,region.y1,rw,rh,(iw-rw*scale)/2,(ih-rh*scale)/2,rw*scale,rh*scale);
+ const mean=[.40789654,.44719302,.47026115],std=[.28863828,.27408164,.27809835];
+ const x=tensor(c,(r,g,b,k)=>(([b,g,r][k]/255)-mean[k])/std[k]);
+ let out;const started=time();
+ try{out=await s.run({[s.inputNames[0]]:x});const cells=assignTableLines(decodeTable(out,region),lines);log('TableCenterNet '+Math.round(time()-started)+' ms; cells '+cells.length+'; outputs '+Object.keys(out).join(', '));return cells;}
+ finally{x.dispose();if(out)for(const v of Object.values(out))v.dispose();}
+}
+function drawTable(cells){const ctx=preview.getContext('2d');ctx.strokeStyle='#0891b2';ctx.lineWidth=Math.max(2,source.width/500);for(const cell of cells){ctx.beginPath();cell.corners.forEach(([x,y],i)=>i?ctx.lineTo(x,y):ctx.moveTo(x,y));ctx.closePath();ctx.stroke();}$('table-preview').innerHTML=cells.length?tableHTML(cells):'<p>表セルが検出されませんでした。</p>';}
 function drawBoxes(boxes){paintSelection();const ctx=preview.getContext('2d');ctx.strokeStyle='#e11d48';ctx.fillStyle='#e11d48';ctx.lineWidth=Math.max(2,source.width/500);ctx.font=Math.max(14,source.width/60)+'px sans-serif';for(const [i,b] of boxes.entries()){ctx.strokeRect(b.x1,b.y1,b.x2-b.x1,b.y2-b.y1);ctx.fillText(String(i+1),b.x1,Math.max(15,b.y1));}}
 $('run').onclick=async()=>{
- const controls=['file','sample','mode','ep','order','cascade','crop','crop-clear','normalize-variants','enable-tcy','run'].map($);controls.forEach(el=>el.disabled=true);$('log').textContent='';clearResult();cropState(false);const t=time();
+ const controls=['file','sample','mode','ep','order','cascade','crop','crop-clear','normalize-variants','enable-tcy','table-structure','export-format','run'].map($);controls.forEach(el=>el.disabled=true);$('log').textContent='';clearResult();cropState(false);const t=time();
  try{
   const ep=$('ep').value,mode=$('mode').value;status('ONNX Runtime 初期化');await runtime(ep);const region=selection||fullRegion(),normalize=$('normalize-variants').checked,mapper=normalize?await getInclusion():null;let boxes;
   if(mode==='page'){const det=await model('det');status('行検出中');await yieldUI();boxes=readingOrder(await detect(det,region),$('order').value);}
@@ -150,11 +162,19 @@ $('run').onclick=async()=>{
   const rt=time(),simple=$('cascade').value==='simple';
   const read=async(tier,b)=>readTCY(await model(tier===100?'rec':'rec'+tier),b);
   for(let i=0;i<boxes.length;i++){status('文字認識 '+(i+1)+' / '+boxes.length);await yieldUI();const result=await recognizeCascade(boxes[i],read,{simple});boxes[i].rawText=result.text;boxes[i].text=mapper?mapper.apply(result.text):result.text;boxes[i].recognition=result.trace;log('line '+(i+1)+' cascade '+result.trace.map(x=>x.tier+(x.part?':'+x.part:'')+'('+x.length+')').join(' -> '));$('result').value=boxes.slice(0,i+1).map(b=>b.text).join('\n');}
+  let cells=[];if($('table-structure').checked){status('表構造認識中');await yieldUI();cells=await inferTable(region,boxes);drawTable(cells);}
   const total=Math.round(time()-t);log('PARSeq '+Math.round(time()-rt)+' ms; total '+total+' ms; requested EP '+ep);
-  lastResult={version:'2.0.0',revision,requestedEP:ep,mode,recognitionMode:simple?'simple':'cascade',normalizedVariants:normalize,tcy:$('enable-tcy').checked,region,width:source.width,height:source.height,elapsedMs:total,lines:boxes,text:$('result').value};
-  $('save').disabled=false;status('完了: '+boxes.length+' 行 / '+total+' ms','done');
+  lastResult={version:'2.0.0',revision,requestedEP:ep,mode,recognitionMode:simple?'simple':'cascade',normalizedVariants:normalize,tcy:$('enable-tcy').checked,region,width:source.width,height:source.height,elapsedMs:total,tableCells:cells,lines:boxes,text:$('result').value};
+  $('save').disabled=false;$('export').disabled=false;status('完了: '+boxes.length+' 行 / '+total+' ms','done');
  }catch(e){log(e.stack||String(e));status(String(e),'error');}finally{controls.forEach(el=>el.disabled=false);}
 };
 $('copy').onclick=async()=>{try{await navigator.clipboard.writeText($('result').value);}catch(e){log(String(e));}};
 $('save').onclick=()=>{if(!lastResult)return;const url=URL.createObjectURL(new Blob([JSON.stringify(lastResult,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='ndlocr-v2.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
 drawSample();
+
+$('export').onclick=()=>{
+ if(!lastResult)return;
+ const fmt=$('export-format').value;
+ const content=fmt==='html'?'<!doctype html><html lang="ja"><meta charset="utf-8"><title>NDLOCR result</title><style>table{border-collapse:collapse}td{border:1px solid #888;padding:6px}</style>'+ (lastResult.tableCells.length?tableHTML(lastResult.tableCells):'<pre>'+escapeHTML(lastResult.text)+'</pre>')+'</html>':lastResult.text;
+ const url=URL.createObjectURL(new Blob([content],{type:fmt==='html'?'text/html;charset=utf-8':'text/plain;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download='ndlocr-result.'+fmt;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+};

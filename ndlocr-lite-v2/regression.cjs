@@ -116,9 +116,9 @@ async function main(){
   },{requires:['#normalize-variants']});
   await feature('11-table-html',async()=>{
    const values=[['品名','数量','価格'],['りんご','二','百円'],['みかん','三','二百円']];const lines=values.flatMap((row,i)=>row.map((text,j)=>({text,x:45+300*j,y:60+110*i})));
-   await load(await image('table',{w:970,h:400,lines,table:true}));await page.locator('#table-structure').check();await runOCR();
+   await load(await image('table',{w:970,h:400,lines,table:true}));await page.locator('#table-structure').check();try{const out=await runOCR();assert.match(out.log,/TableCenterNet .*cells/);const j=await json('table-result');assert.ok(j.tableCells.length>=9,JSON.stringify(j.tableCells));
    const html=await fs.readFile(await exportFile('html','table.html'),'utf8');const cells=await page.evaluate(html=>Array.from(new DOMParser().parseFromString(html,'text/html').querySelectorAll('table tr')).map(tr=>Array.from(tr.querySelectorAll('td,th')).map(td=>td.textContent.trim())),html);
-   assert.deepEqual(cells,values);return {cells};
+   assert.deepEqual(cells,values);return {cells};}finally{await page.locator('#table-structure').uncheck();}
   },{requires:['#table-structure','#export-format','#export']});
   await feature('12-pdf-multipage-searchable',async()=>{
    const f=await makePDF();await page.locator('#file').setInputFiles(f);await page.waitForFunction(()=>document.querySelector('#status').dataset.state==='ready');await runOCR();

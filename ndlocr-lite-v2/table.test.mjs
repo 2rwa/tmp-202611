@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import {decodeTable,logicalCoords,assignTableLines,tableHTML} from './table-logic.mjs';
+assert.deepEqual(logicalCoords([[1,1],[3,1],[3,2],[1,2]],[2,1]),[1,2,1,1]);
+const w=8,h=8,n=w*h,t=c=>({dims:[1,c,h,w],data:new Float32Array(c*n)});
+const hm=t(2),reg=t(2),ct2cn=t(8),lc=t(2),sp=t(2);hm.data.fill(-20);hm.data[3*w+3]=10;lc.data.fill(1);sp.data.fill(1);
+for(const [i,v] of [2,2,-2,2,-2,-2,2,-2].entries())ct2cn.data[i*n+3*w+3]=v;
+const cells=decodeTable({hm,reg,ct2cn,lc,sp},{x1:0,y1:0,x2:80,y2:80});
+assert.equal(cells.length,1);assert.deepEqual(cells[0].corners,[[10,10],[50,10],[50,50],[10,50]]);
+const filled=assignTableLines(cells,[{x1:15,y1:20,x2:30,y2:30,text:'A<&'}]);assert.match(tableHTML(filled),/A&lt;&amp;/);
+assert.match(tableHTML([{startRow:1,endRow:2,startCol:1,endCol:2,text:'merged'}]),/rowspan="2" colspan="2"/);
+console.log('TableCenterNet synthetic decoder and HTML tests passed');
