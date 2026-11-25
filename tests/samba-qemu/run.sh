@@ -18,6 +18,7 @@ cleanup() {
   rm -rf "$work"
 }
 trap cleanup EXIT
+trap 'echo "ERROR: harness line $LINENO exited $?" >&2' ERR
 sudo apt-get update
 sudo apt-get install -y qemu-system-x86 qemu-utils cloud-image-utils python3-pexpect
 ssh-keygen -q -t ed25519 -N '' -f "$key"
@@ -64,10 +65,14 @@ ethernets:
     set-name: lan0
     addresses: [$addr/24]
     dhcp4: false
+    dhcp6: false
+    link-local: []
+    optional: true
   wan:
     match: {macaddress: "$wanmac"}
     set-name: wan0
     dhcp4: true
+    dhcp6: false
 EOF
   cloud-localds --network-config="$work/$n.net" "$work/$n.seed" "$work/$n.user" "$work/$n.meta"
   qemu-system-x86_64 -machine "q35,accel=$accel" -m 2048 -smp 2 -display none -monitor none \
@@ -79,8 +84,15 @@ EOF
 }
 guest() { local port="$1"; shift; ssh "${opts[@]}" -p "$port" runner@127.0.0.1 "$@"; }
 ready() {
-  local p="$1"
-  for i in {1..180}; do if guest "$p" true 2>/dev/null; then guest "$p" 'sudo cloud-init status --wait && ip -4 addr show lan0 && cat /etc/os-release'; return; fi; sleep 5; done
+  local p="$1" addr
+  case "$p" in 22011) addr=10.77.0.11;; 22012) addr=10.77.0.12;; *) return 1;; esac
+  for i in {1..180}; do
+    if guest "$p" true 2>/dev/null; then
+      guest "$p" "rc=0; sudo cloud-init status --wait --long || rc=\$?; echo cloud-init-exit=\$rc; ip -br link; ip -br -4 addr; ip -4 route; cat /etc/os-release; sudo networkctl list --no-pager; if [ \"\$rc\" -ne 0 ]; then sudo journalctl -u systemd-networkd -u systemd-networkd-wait-online --no-pager -n 80; fi; test \"\$rc\" -le 2 && ip -o -4 addr show dev lan0 | grep -F '$addr/24' && ip -4 route show default | grep -q 'dev wan0' && id runner"
+      return
+    fi
+    sleep 5
+  done
   return 1
 }
 interactive() {

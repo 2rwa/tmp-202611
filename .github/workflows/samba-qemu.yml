@@ -22,7 +22,11 @@ jobs:
           free -h
           ls -l /dev/kvm /dev/net/tun || true
       - name: Two Ubuntu guests, real SMB and CIFS
-        run: bash tests/samba-qemu/run.sh scripts/lan-share/setup-samba-host.sh 2>&1 | tee samba-qemu.log
+        shell: bash
+        run: |
+          set -o pipefail
+          bash tests/samba-qemu/run.sh scripts/lan-share/setup-samba-host.sh 2>&1 | tee samba-qemu.log
+          grep -Fxq "PASS: two-VM Samba regression" samba-qemu.log
       - uses: actions/upload-artifact@v4
         if: always()
         with:
