@@ -159,7 +159,7 @@ async function recognize(s,b,{forceHorizontal=false}={}){
  else ctx.drawImage(source,b.x1,b.y1,w,h,0,0,iw,ih);
  // Python PARSeq preprocess reverses the input RGB channels.
  const x=tensor(c,(r,g,b,k)=>[b,g,r][k]/127.5-1);
- const o=await s.run({[s.inputNames[0]]:x});const y=o[s.outputNames[0]],dims=y.dims;
+ const o=await runModel(s,{[s.inputNames[0]]:x});const y=o[s.outputNames[0]],dims=y.dims;
  if(dims.length!==3||dims[0]!==1||dims[2]!==charset.length+1)throw Error('Unexpected PARSeq logits / charset: '+dims+' / '+charset.length);
  let str='';for(let i=0;i<dims[1];i++){let best=0,score=-Infinity;for(let j=0;j<dims[2];j++){const v=y.data[i*dims[2]+j];if(v>score){score=v;best=j;}}if(best===0)break;str+=charset[best-1];}
  for(const v of Object.values(o))v.dispose();x.dispose();return str.replace(/ ([、。])/g,'$1').replace(/([、。]) /g,'$1');
@@ -173,7 +173,7 @@ async function inferTable(region,lines){
  const mean=[.40789654,.44719302,.47026115],std=[.28863828,.27408164,.27809835];
  const x=tensor(c,(r,g,b,k)=>(([b,g,r][k]/255)-mean[k])/std[k]);
  let out;const started=time();
- try{out=await s.run({[s.inputNames[0]]:x});const cells=assignTableLines(decodeTable(out,region),lines);log('TableCenterNet '+Math.round(time()-started)+' ms; cells '+cells.length+'; outputs '+Object.keys(out).join(', '));return cells;}
+ try{out=await runModel(s,{[s.inputNames[0]]:x});const cells=assignTableLines(decodeTable(out,region),lines);log('TableCenterNet '+Math.round(time()-started)+' ms; cells '+cells.length+'; outputs '+Object.keys(out).join(', '));return cells;}
  finally{x.dispose();if(out)for(const v of Object.values(out))v.dispose();}
 }
 function drawTable(cells){const ctx=preview.getContext('2d');ctx.strokeStyle='#0891b2';ctx.lineWidth=Math.max(2,source.width/500);for(const cell of cells){ctx.beginPath();cell.corners.forEach(([x,y],i)=>i?ctx.lineTo(x,y):ctx.moveTo(x,y));ctx.closePath();ctx.stroke();}$('table-preview').innerHTML=cells.length?tableHTML(cells):'<p>表セルが検出されませんでした。</p>';}
