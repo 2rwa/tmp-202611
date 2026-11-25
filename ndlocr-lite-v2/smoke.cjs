@@ -9,7 +9,7 @@ const assert=require('node:assert/strict');
   page.on('pageerror',e=>console.error('PAGE ERROR',e));await page.goto('http://127.0.0.1:8765/ndlocr-lite-v2/');
   await page.locator('#run').click();await page.waitForFunction(()=>['done','error'].includes(document.querySelector('#status').dataset.state),{},{timeout:600000});
   const state=await page.locator('#status').innerText(),log=await page.locator('#log').innerText(),text=await page.locator('#result').inputValue();
-  console.log(state,log,JSON.stringify(text));assert.equal(await page.locator('#status').getAttribute('data-state'),'done');assert.ok(text.trim().length>0,'empty OCR');assert.match(text,/国立|図書館|日本語|NDLOCR/i);
-  await page.screenshot({path:'ndlocr-smoke.png',fullPage:true});
+  console.log(state,log,JSON.stringify(text));await page.screenshot({path:'ndlocr-smoke.png',fullPage:true});assert.match(log,/det image input: 800 x 800/);assert.match(log,/rec image input: \d+ x \d+/);assert.equal(await page.locator('#status').getAttribute('data-state'),'done');assert.ok(text.trim().length>0,'empty OCR');assert.match(text,/国立|図書館|日本語|NDLOCR/i);
+
  }finally{await browser?.close();server.kill();}
 })().catch(e=>{console.error(e);process.exitCode=1;});
