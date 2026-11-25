@@ -34,3 +34,6 @@ Patch iteration: initial Mul+ReduceSum candidate failed strict full-model CPU pa
 
 ## Verified runtime update
 Run 45717418332 job 139566925270 passed all three original-model GPU tests on ORT Web 1.31.1 / optimization all (exact OCR, dispatch/submit observed, no GPU validation errors). Version 1.22.0 fails DEIM MatMul and PARSeq argMax WGSL. Both candidate model rewrites failed strict CPU parity, so they are suspended, not published. Use unmodified official models and pinned 1.31.1 by default. Mac real-GPU speed remains unmeasured.
+
+## Mac hardware measurement 2026-11-26 (user-supplied report)
+ORT 1.31.1, Chrome, Apple metal-3, non-fallback adapter; 900x280 sample, 3 lines, 38 characters, 3 warm runs, 100-character recognition. WASM 3091 ms (det 2338.3, rec 715); PARSeq GPU only 3368 ms (2364.8, 961.9); DEIM GPU only 999 ms (247.9, 727); both GPU 1009 ms (247.5, 723). All modes matched WASM and all GPU modes reported no GPU errors. DEIM-only 3.094x overall, ~9.43x detection. Device model not recorded. New default DEIM GPU / PARSeq WASM on this preview only; compare short-model cascade against 100-character model using new benchmark plan, per-tier invocation counts, and exact text agreement. No claim of cascade speed/accuracy improvement until measured.

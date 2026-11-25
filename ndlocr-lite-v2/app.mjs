@@ -180,7 +180,7 @@ function drawTable(cells){const ctx=preview.getContext('2d');ctx.strokeStyle='#0
 function drawBoxes(boxes){paintSelection();const ctx=preview.getContext('2d');ctx.strokeStyle='#e11d48';ctx.fillStyle='#e11d48';ctx.lineWidth=Math.max(2,source.width/500);ctx.font=Math.max(14,source.width/60)+'px sans-serif';for(const [i,b] of boxes.entries()){ctx.strokeRect(b.x1,b.y1,b.x2-b.x1,b.y2-b.y1);ctx.fillText(String(i+1),b.x1,Math.max(15,b.y1));}}
 async function runOCR(){
  if(runBusy)return null;runBusy=true;runMetrics={models:{}};
- const controls=['file','sample','mode','ep','order','cascade','crop','crop-clear','normalize-variants','enable-tcy','table-structure','export-format','benchmark','bench-count','run'].map($);controls.forEach(el=>el.disabled=true);$('log').textContent='';clearResult();cropState(false);const t=time();
+ const controls=['file','sample','mode','ep','order','cascade','crop','crop-clear','normalize-variants','enable-tcy','table-structure','export-format','benchmark','bench-count','bench-plan','run'].map($);controls.forEach(el=>el.disabled=true);$('log').textContent='';clearResult();cropState(false);const t=time();
  try{
   const ep=$('ep').value,mode=$('mode').value;status('ONNX Runtime 初期化');await runtime(ep);const region=selection||fullRegion(),normalize=$('normalize-variants').checked,mapper=normalize?await getInclusion():null;let boxes;
   if(mode==='page'){const det=await model('det');status('行検出中');await yieldUI();boxes=readingOrder(await detect(det,region),$('order').value);}
@@ -214,7 +214,7 @@ function renderBench(rows){
  const body=$('bench-results');body.replaceChildren();
  for(const r of rows){
   const tr=document.createElement('tr'),f=x=>Number.isFinite(x)?Math.round(x).toLocaleString():'—';
-  for(const v of [r.ep,r.state,f(r.coldMs),f(r.warmMs),f(r.detMs),f(r.recMs),f(r.dispatch),r.speedup?(r.speedup.toFixed(2)+'×'+(r.speedupVerified?'':'（未確認）')):'—',r.matches===null?'—':r.matches?'一致':'不一致']){
+  for(const v of [r.ep,r.recognizer||'—',r.state,f(r.coldMs),f(r.warmMs),f(r.detMs),f(r.recMs),f(r.dispatch),r.speedup?(r.speedup.toFixed(2)+'×'+(r.speedupVerified?'':'（未確認）')):'—',r.matches===null?'—':r.matches?'一致':'不一致']){
    const td=document.createElement('td');td.textContent=v;tr.append(td);
   }
   body.append(tr);
@@ -222,25 +222,26 @@ function renderBench(rows){
 }
 async function runBenchmark(){
  if(runBusy||benchmarkBusy)return;benchmarkBusy=true;benchmarkReport=null;$('bench-save').disabled=true;$('bench-copy').disabled=true;
- const ids=['file','sample','mode','ep','order','cascade','crop','crop-clear','normalize-variants','enable-tcy','table-structure','export-format','benchmark','bench-count','run'],controls=ids.map($);
- const epBefore=$('ep').value,modeBefore=$('mode').value,tableBefore=$('table-structure').checked;
+ const ids=['file','sample','mode','ep','order','cascade','crop','crop-clear','normalize-variants','enable-tcy','table-structure','export-format','benchmark','bench-count','bench-plan','run'],controls=ids.map($);
+ const epBefore=$('ep').value,modeBefore=$('mode').value,tableBefore=$('table-structure').checked,cascadeBefore=$('cascade').value,plan=$('bench-plan').value;
  controls.forEach(e=>e.disabled=true);$('mode').value='page';$('table-structure').checked=false;cropState(false);
  const rows=[],count=Number($('bench-count').value),baseline={text:null,ms:null};
- const info={browser:navigator.userAgent,ortVersion,optimization,detPatch:params.get('detpatch')==='1',image:{width:source.width,height:source.height,region:selection||fullRegion()},recognizer:$('cascade').value,order:$('order').value,tcy:$('enable-tcy').checked,normalized:$('normalize-variants').checked,warmRuns:count,startedAt:new Date().toISOString()};
+ const info={plan,browser:navigator.userAgent,ortVersion,optimization,detPatch:params.get('detpatch')==='1',image:{width:source.width,height:source.height,region:selection||fullRegion()},recognizer:$('cascade').value,order:$('order').value,tcy:$('enable-tcy').checked,normalized:$('normalize-variants').checked,warmRuns:count,startedAt:new Date().toISOString()};
  try{
-  for(const ep of ['wasm','webgpu-rec','webgpu-det','webgpu']){
-   const row={ep,state:'計測中',coldMs:null,warmMs:null,detMs:null,recMs:null,dispatch:null,speedup:null,matches:null,runs:[]};rows.push(row);renderBench(rows);
-   $('ep').value=ep;
+  const configs=plan==='cascade-compare'?[['wasm','simple'],['webgpu-det','simple'],['webgpu-det','cascade'],['webgpu','cascade'],['webgpu','simple']]:['wasm','webgpu-rec','webgpu-det','webgpu'].map(ep=>[ep,cascadeBefore]);
+  for(const [ep,recognizer] of configs){
+   const row={ep,recognizer,state:'計測中',coldMs:null,warmMs:null,detMs:null,recMs:null,dispatch:null,speedup:null,matches:null,runs:[]};rows.push(row);renderBench(rows);
+   $('ep').value=ep;$('cascade').value=recognizer;
    // Release prior sessions so each first run is a separate initialization sample.
    for(const s of Object.values(sessions))await s.release();sessions={};activeEP=null;
    const deviceStart=gpuTrace.devices.length,errorStart=gpuTrace.errors.length;
    for(let i=0;i<=count;i++){
-    $('bench-status').textContent=ep+' '+(i===0?'初回（集計外）':i+' / '+count);
+    $('bench-status').textContent=ep+' / '+recognizer+' '+(i===0?'初回（集計外）':i+' / '+count);
     const before=gpuTrace.dispatch,sub=gpuTrace.submit,t=time(),r=await runOCR(),wall=time()-t;
     if(!r){row.state='エラー';row.error=$('status').textContent;row.log=$('log').textContent;break;}
     const models=r.metrics.models,det=models.det?.ms||0,rec=Object.entries(models).filter(([k])=>k.startsWith('rec')).reduce((n,[,m])=>n+m.ms,0);
     if(ep==='wasm'&&i===0)baseline.text=r.text;
-    row.runs.push({cold:i===0,elapsedMs:r.elapsedMs,wallMs:wall,detMs:det,recMs:rec,dispatch:gpuTrace.dispatch-before,submit:gpuTrace.submit-sub,models,modelGPUProof:modelGPUProof(ep,models),matches:baseline.text===null?null:r.text===baseline.text,lines:r.lines.length,characters:Array.from(r.text).length});
+    row.runs.push({cold:i===0,elapsedMs:r.elapsedMs,wallMs:wall,detMs:det,recMs:rec,dispatch:gpuTrace.dispatch-before,submit:gpuTrace.submit-sub,models,tierCalls:Object.fromEntries(Object.entries(models).filter(([k])=>k.startsWith('rec')).map(([k,m])=>[k,m.calls])),modelGPUProof:modelGPUProof(ep,models),matches:baseline.text===null?null:r.text===baseline.text,lines:r.lines.length,characters:Array.from(r.text).length});
    }
    row.devices=gpuTrace.devices.slice(deviceStart);row.gpuErrors=gpuTrace.errors.slice(errorStart);
    row.coldMs=row.runs[0]?.elapsedMs??null;
@@ -251,6 +252,8 @@ async function runBenchmark(){
     row.gpuVerified=ep!=='wasm'&&warm.every(x=>x.modelGPUProof.verified)&&row.gpuErrors.length===0;
     row.appleGPU=row.gpuVerified&&row.devices.length>0&&row.devices.every(d=>/apple/i.test([d.vendor,d.architecture,d.description].join(' '))&&d.isFallbackAdapter!==true&&!/swiftshader|software/i.test([d.vendor,d.architecture,d.description].join(' ')));
     if(ep==='wasm')baseline.ms=row.warmMs;
+    const hybrid=rows.find(x=>x.ep==='webgpu-det'&&x.recognizer==='simple'&&x.warmMs&&x.gpuVerified&&x.matches===true);
+    row.speedupVsHybrid100=hybrid&&row.warmMs?hybrid.warmMs/row.warmMs:null;
     if(ep!=='wasm'&&baseline.ms&&row.warmMs)row.speedup=baseline.ms/row.warmMs;
     row.state=row.matches===false?'認識結果不一致':ep==='wasm'?'完了':row.gpuVerified?'モデル別GPU確認':'GPU未確認';
     row.speedupVerified=row.gpuVerified&&row.matches===true&&Number.isFinite(row.speedup);
@@ -261,7 +264,7 @@ async function runBenchmark(){
  finally{
   benchmarkReport={...info,completedAt:new Date().toISOString(),gpuHooks:[...gpuTrace.hooks],rows};
   $('bench-status').textContent='計測終了。失敗条件も含めてJSONに保存できます。';
-  $('ep').value=epBefore;$('mode').value=modeBefore;$('table-structure').checked=tableBefore;
+  $('ep').value=epBefore;$('mode').value=modeBefore;$('cascade').value=cascadeBefore;$('table-structure').checked=tableBefore;
   benchmarkBusy=false;controls.forEach(e=>e.disabled=false);$('bench-save').disabled=false;$('bench-copy').disabled=false;
  }
 }
