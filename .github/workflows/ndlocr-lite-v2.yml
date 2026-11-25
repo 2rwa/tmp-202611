@@ -1,7 +1,9 @@
 name: NDLOCR-Lite v2 browser regression
 on:
   push:
-    branches: [main]
+    branches: [main, 'feat/ndlocr-*']
+    paths: ['ndlocr-lite-v2/**', '.github/workflows/ndlocr-lite-v2.yml']
+  pull_request:
     paths: ['ndlocr-lite-v2/**', '.github/workflows/ndlocr-lite-v2.yml']
   workflow_dispatch:
 permissions:

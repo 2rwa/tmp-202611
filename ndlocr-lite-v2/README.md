@@ -15,3 +15,6 @@
 
 ## Regression tests
 See [TESTS.md](TESTS.md) for the feature contract, fixtures and test command. OCR regression workflow is independent of Pages deployment.
+
+- 範囲指定: プレビュー上のドラッグ矩形を実際の検出入力に切り出し、JSON座標は元画像基準で保持する。範囲解除・画像切替時は結果をクリアする。
+- 異体字包摂: 固定リビジョンの公式CSVを必要時に取得し、多文字の最長一致を先に、単文字置換を後に実行する。JSONにrawTextと変換済みtextを保存する。チェック変更後にOCRを再実行する。
