@@ -5,7 +5,7 @@ const $=id=>document.getElementById(id);
 const revision='1f3adc7af311af1ce4cbbd4d9089f30781d01313';
 const raw='https://raw.githubusercontent.com/ndl-lab/ndlocr-lite/'+revision+'/src/';
 const params=new URLSearchParams(location.search);
-const ortVersion=/^\d+\.\d+\.\d+$/.test(params.get('ort')||'')?params.get('ort'):'1.22.0';
+const ortVersion=/^\d+\.\d+\.\d+$/.test(params.get('ort')||'')?params.get('ort'):'1.31.1';
 const optimization=['disabled','basic','extended','all'].includes(params.get('opt'))?params.get('opt'):'all';
 const cdn='https://cdn.jsdelivr.net/npm/onnxruntime-web@'+ortVersion+'/dist/';
 const modelEP=key=>activeEP==='webgpu'||(activeEP==='webgpu-rec'&&key.startsWith('rec'))||(activeEP==='webgpu-det'&&key==='det')?['webgpu','wasm']:['wasm'];
