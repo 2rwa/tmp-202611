@@ -63,3 +63,33 @@ export function tableHTML(cells){
  const slots=new Map();for(const c of cells)for(let r=c.startRow;r<=c.endRow;r++)for(let k=c.startCol;k<=c.endCol;k++)slots.set(r+':'+k,c);
  let s='<table><tbody>';for(let r=1;r<=rows;r++){s+='<tr>';for(let k=1;k<=cols;k++){const c=slots.get(r+':'+k);if(!c){s+='<td></td>';continue;}if(c.startRow!==r||c.startCol!==k)continue;const rs=c.endRow-r+1,cs=c.endCol-k+1;s+='<td'+(rs>1?' rowspan="'+rs+'"':'')+(cs>1?' colspan="'+cs+'"':'')+'>'+escapeHTML(c.text).replace(/\n/g,'<br>')+'</td>';}s+='</tr>';}return s+'</tbody></table>';
 }
+
+// Find near-full-length horizontal and vertical rules; only use these for
+// interior cropping, not to override the model's logical cell structure.
+export function ruledAxes(data,w,h){
+ const xx=new Uint32Array(w),yy=new Uint32Array(h);
+ for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+  const i=(y*w+x)*4;if((data[i]+data[i+1]+data[i+2])/3<100){xx[x]++;yy[y]++;}
+ }
+ function bands(count,span){
+  const ranges=[];let start=-1;
+  for(let i=0;i<=count.length;i++){
+   if(i<count.length&&count[i]>=span*.70){if(start<0)start=i;}
+   else if(start>=0){ranges.push({lo:start,hi:i,mid:(start+i-1)/2});start=-1;}
+  }return ranges;
+ }
+ return {x:bands(xx,h),y:bands(yy,w)};
+}
+export function interiorCell(c,axes,region){
+ const nearest=(a,v,offset,tol)=>a.reduce((best,r)=>Math.abs(r.mid+offset-v)<tol&&(!best||Math.abs(r.mid+offset-v)<Math.abs(best.mid+offset-v))?r:best,null);
+ const w=c.x2-c.x1,h=c.y2-c.y1,pad=Math.max(2,Math.round(Math.min(w,h)*.035));
+ const a=nearest(axes.x,c.x1,region.x1,w*.18),b=nearest(axes.x,c.x2,region.x1,w*.18),d=nearest(axes.y,c.y1,region.y1,h*.18),e=nearest(axes.y,c.y2,region.y1,h*.18);
+ const out={x1:Math.max(region.x1,Math.ceil(a?a.hi+region.x1+1:c.x1+pad)),x2:Math.min(region.x2,Math.floor(b?b.lo+region.x1-1:c.x2-pad)),y1:Math.max(region.y1,Math.ceil(d?d.hi+region.y1+1:c.y1+pad)),y2:Math.min(region.y2,Math.floor(e?e.lo+region.y1-1:c.y2-pad))};
+ return out.x2-out.x1>=4&&out.y2-out.y1>=4?out:null;
+}
+// Estimate isolated glyph geometry using the height of neighboring text lines
+// when available. Do not interpret the shape as a particular character.
+export function shortCellCandidates(ink,referenceHeight){
+ const w=ink.x2-ink.x1,h=ink.y2-ink.y1,ref=Math.max(h,referenceHeight||h);
+ return w<=ref*1.6&&h<=ref*1.5?[2.5,4,6]:[];
+}

@@ -1,6 +1,6 @@
 import {exportDaisy} from './daisy.mjs';
 import {openPDF,renderInput,exportDocument,searchablePDF} from './document-io.mjs';
-import {decodeTable,assignTableLines,tableHTML,escapeHTML} from './table-logic.mjs';
+import {decodeTable,assignTableLines,tableHTML,escapeHTML,ruledAxes,interiorCell,shortCellCandidates} from './table-logic.mjs';
 import {recognizeCascade,readingOrder,inclusionFromCSV,cropRect,cropPoint,suppressLines,inkBounds,tcySegments,codepoints,splitWideLine} from './ocr-logic.mjs';
 // Experimental JS port of preprocessing and decoding in NDL's NDLOCR-Lite 2.0.0 (CC BY 4.0).
 const $=id=>document.getElementById(id);
@@ -133,7 +133,7 @@ function imageShapeFromONNX(buffer,inputName){
  throw Error('ONNX input not found: '+inputName);
 }
 async function model(key){
- if(sessions[key])return sessions[key];
+ if(sessions[key]){const s=sessions[key],shape=modelShapes.get(s);log(key+' image input: '+shape.height+' x '+shape.width+' (session reused)');return s;}
  const spec=specs[key], url=raw+'model/'+spec.file;
  status('モデル取得: '+spec.file);
  let cache;try{cache=await caches.open('ndlocr-v2-'+revision);}catch{}
@@ -172,17 +172,18 @@ async function detect(s,region=fullRegion()){
  for(const v of o)v.dispose();x.dispose();size.dispose();
  return suppressLines(arr);
 }
-async function recognize(s,b,{forceHorizontal=false}={}){
+async function recognize(s,b,{forceHorizontal=false,padAspect=0,referenceHeight=0,details=false}={}){
  const {height:ih,width:iw}=modelShapes.get(s);
  const w=b.x2-b.x1,h=b.y2-b.y1,c=canvas(iw,ih),ctx=c.getContext('2d');
  if(!forceHorizontal&&h>w*.8){ctx.translate(0,ih);ctx.rotate(-Math.PI/2);ctx.drawImage(source,b.x1,b.y1,w,h,0,0,ih,iw);}
+ else if(padAspect){ctx.fillStyle='white';ctx.fillRect(0,0,iw,ih);const ph=Math.max(h,referenceHeight),pw=Math.max(w,ph*padAspect);ctx.drawImage(source,b.x1,b.y1,w,h,iw*(pw-w)*.1/pw,ih*(ph-h)*.5/ph,iw*w/pw,ih*h/ph);}
  else ctx.drawImage(source,b.x1,b.y1,w,h,0,0,iw,ih);
  // Python PARSeq preprocess reverses the input RGB channels.
  const x=tensor(c,(r,g,b,k)=>[b,g,r][k]/127.5-1);
  const o=await s.run({[s.inputNames[0]]:x});const y=o[s.outputNames[0]],dims=y.dims;
  if(dims.length!==3||dims[0]!==1||dims[2]!==charset.length+1)throw Error('Unexpected PARSeq logits / charset: '+dims+' / '+charset.length);
- let str='';for(let i=0;i<dims[1];i++){let best=0,score=-Infinity;for(let j=0;j<dims[2];j++){const v=y.data[i*dims[2]+j];if(v>score){score=v;best=j;}}if(best===0)break;str+=charset[best-1];}
- for(const v of Object.values(o))v.dispose();x.dispose();return str.replace(/ ([、。])/g,'$1').replace(/([、。]) /g,'$1');
+ let str='',confidence=0,steps=0;for(let i=0;i<dims[1];i++){let best=0,score=-Infinity;for(let j=0;j<dims[2];j++){const v=y.data[i*dims[2]+j];if(v>score){score=v;best=j;}}if(details){let sum=0;for(let j=0;j<dims[2];j++)sum+=Math.exp(y.data[i*dims[2]+j]-score);confidence-=Math.log(sum);steps++;}if(best===0)break;str+=charset[best-1];}
+ for(const v of Object.values(o))v.dispose();x.dispose();str=str.replace(/ ([、。])/g,'$1').replace(/([、。]) /g,'$1');return details?{text:str,confidence:Math.exp(confidence/Math.max(1,steps))}:str;
 }
 function regionPixels(b){return source.getContext('2d',{willReadFrequently:true}).getImageData(b.x1,b.y1,b.x2-b.x1,b.y2-b.y1).data;}
 function trimLine(b){const r=inkBounds(regionPixels(b),b.x2-b.x1,b.y2-b.y1);return r?{...b,x1:b.x1+r.x1,y1:b.y1+r.y1,x2:b.x1+r.x2,y2:b.y1+r.y2}:b;}
@@ -196,19 +197,33 @@ async function inferTable(region,lines){
  try{out=await s.run({[s.inputNames[0]]:x});const cells=assignTableLines(decodeTable(out,region),lines);log('TableCenterNet '+Math.round(time()-started)+' ms; cells '+cells.length+'; outputs '+Object.keys(out).join(', '));return cells;}
  finally{x.dispose();if(out)for(const v of Object.values(out))v.dispose();}
 }
-async function refineTableCells(cells,mapper){
+async function refineTableCells(cells,mapper,region){
+ const axes=ruledAxes(regionPixels(region),region.x2-region.x1,region.y2-region.y1);
+ const work=[];
  for(const c of cells){
-  if(!c.lines.length)continue;
-  const pad=Math.max(3,Math.min(10,Math.round(Math.min(c.x2-c.x1,c.y2-c.y1)*.06)));
-  const b={x1:Math.ceil(c.x1)+pad,y1:Math.ceil(c.y1)+pad,x2:Math.floor(c.x2)-pad,y2:Math.floor(c.y2)-pad};
-  if(b.x2-b.x1<4||b.y2-b.y1<4)continue;
-  const inner=inkBounds(regionPixels(b),b.x2-b.x1,b.y2-b.y1);if(!inner)continue;
-  const tight={x1:b.x1+inner.x1,y1:b.y1+inner.y1,x2:b.x1+inner.x2,y2:b.y1+inner.y2};
-  // Only use the single-line refinement on geometrically one-line cells.
-  const span=c.lines.map(l=>(l.y1+l.y2)/2);if(Math.max(...span)-Math.min(...span)>(tight.y2-tight.y1)*.55)continue;
-  if(tight.y2-tight.y1>(c.y2-c.y1)*.75)continue;
-  const raw=await recognize(await model('rec30'),tight,{forceHorizontal:true});
-  if(raw.trim()){c.rawText=c.text;c.text=mapper?mapper.apply(raw):raw;c.refined=true;}
+  const b=interiorCell(c,axes,region);if(!b)continue;
+  const ink=inkBounds(regionPixels(b),b.x2-b.x1,b.y2-b.y1);if(!ink)continue;
+  const tight={x1:b.x1+ink.x1,y1:b.y1+ink.y1,x2:b.x1+ink.x2,y2:b.y1+ink.y2};
+  const h=tight.y2-tight.y1,w=tight.x2-tight.x1;
+  const span=c.lines.map(l=>(l.y1+l.y2)/2);if(span.length&&Math.max(...span)-Math.min(...span)>h*.55)continue;
+  if(h>(c.y2-c.y1)*.75)continue;
+  work.push({c,tight,h,w});
+ }
+ const heights=work.filter(x=>x.w>x.h*1.8).map(x=>x.h).sort((a,b)=>a-b),ref=heights[Math.floor(heights.length/2)]||0;
+ for(const {c,tight,h,w} of work){
+  const aspects=shortCellCandidates(tight,ref);if(!aspects.length)continue;
+  const s=await model('rec30'),candidates=[];
+  for(const padAspect of aspects){const r=await recognize(s,tight,{forceHorizontal:true,padAspect,referenceHeight:ref,details:true});if(r.text.trim())candidates.push({...r,padAspect});}
+  // Select only plausible one-glyph output when the cropped geometry suggests
+  // an isolated glyph. Preserve existing plausible text unless confidence
+  // and consensus justify replacement. Log candidates for later inspection.
+  const good=candidates.filter(r=>Array.from(r.text.trim()).length===1);
+  good.sort((a,b)=>b.confidence-a.confidence);
+  c.refinement={crop:tight,referenceHeight:ref,candidates};
+  log('cell '+c.startRow+','+c.startCol+' candidate '+JSON.stringify(c.refinement));
+  if(good.length&&(!c.text.trim()||Array.from(c.text.trim()).length>1||good[0].text===c.text||good.filter(x=>x.text===good[0].text).length>=2)){
+   c.rawText=c.text;c.text=mapper?mapper.apply(good[0].text):good[0].text;c.refined=true;
+  }
  }
  return cells;
 }
@@ -236,7 +251,7 @@ async function runPage(){
   const rt=time(),simple=$('cascade').value==='simple';
   const read=async(tier,b)=>readTCY(await model(tier===100?'rec':'rec'+tier),b);
   for(let i=0;i<boxes.length;i++){status('文字認識 '+(i+1)+' / '+boxes.length);await yieldUI();const result=await recognizeWide(boxes[i],read,simple);boxes[i].rawText=result.text;boxes[i].text=mapper?mapper.apply(result.text):result.text;boxes[i].recognition=result.trace;log('line '+(i+1)+' cascade '+result.trace.map(x=>x.tier+(x.part?':'+x.part:'')+'('+x.length+')').join(' -> '));$('result').value=boxes.slice(0,i+1).map(b=>b.text).join('\n');}
-  let cells=[];if($('table-structure').checked){status('表構造認識中');await yieldUI();cells=await inferTable(region,boxes);await refineTableCells(cells,mapper);drawTable(cells);}
+  let cells=[];if($('table-structure').checked){status('表構造認識中');await yieldUI();cells=await inferTable(region,boxes);await refineTableCells(cells,mapper,region);drawTable(cells);}
   const total=Math.round(time()-t);log('PARSeq '+Math.round(time()-rt)+' ms; total '+total+' ms; requested EP '+ep);
   lastResult={version:'2.0.0',name:entries[pageIndex].name,page:pageIndex+1,revision,requestedEP:ep,ortVersion,optimization,mode,recognitionMode:simple?'simple':'cascade',normalizedVariants:normalize,tcy:$('enable-tcy').checked,region,width:source.width,height:source.height,elapsedMs:total,tableCells:cells,lines:boxes,text:$('result').value};
   pageResults[pageIndex]=lastResult;status('完了: '+boxes.length+' 行 / '+total+' ms','done');return lastResult;
