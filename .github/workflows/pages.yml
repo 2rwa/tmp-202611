@@ -190,9 +190,12 @@ jobs:
       - uses: actions/upload-pages-artifact@v4
         if: steps.verified.outputs.available == 'true' || steps.previous_site.outputs.available == 'true'
         with:
+          name: github-pages-${{ github.run_attempt }}
           path: dist
           retention-days: 30
       - name: Deploy to GitHub Pages
         if: steps.verified.outputs.available == 'true' || steps.previous_site.outputs.available == 'true'
         id: deployment
         uses: actions/deploy-pages@v4
+        with:
+          artifact_name: github-pages-${{ github.run_attempt }}

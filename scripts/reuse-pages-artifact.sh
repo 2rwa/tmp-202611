@@ -7,10 +7,12 @@ mkdir -p downloaded/previous-site
 headers=(-H "Authorization: Bearer $API_TOKEN" -H "Accept: application/vnd.github+json")
 runs=$(curl --fail --silent --show-error --retry 3 "${headers[@]}" \
  "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/pages.yml/runs?status=success&per_page=50") || runs='{"workflow_runs":[]}'
-for run_id in $(printf '%s' "$runs" | jq -r '.workflow_runs[] | select(.head_branch=="main") | .id'); do
+for run_entry in $(printf '%s' "$runs" | jq -r '.workflow_runs[] | select(.head_branch=="main") | "\(.id):\(.run_attempt // 1)"'); do
+  run_id=${run_entry%:*}
+  run_attempt=${run_entry##*:}
   artifacts=$(curl --fail --silent --show-error --retry 3 "${headers[@]}" \
     "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/artifacts") || continue
-  artifact_id=$(printf '%s' "$artifacts" | jq -r '[.artifacts[] | select(.name=="github-pages" and .expired==false) | .id] | first // empty')
+  artifact_id=$(printf '%s' "$artifacts" | jq -r --arg name "github-pages-${run_attempt}" '[.artifacts[] | select(.expired==false)] | (map(select(.name==$name)) | sort_by(.created_at) | last // null) // (map(select(.name=="github-pages")) | sort_by(.created_at) | last // null) | .id // empty')
   if [ -z "$artifact_id" ]; then continue; fi
   tmpzip=$(mktemp)
   if ! curl --fail --silent --show-error --location --retry 3 "${headers[@]}" \
