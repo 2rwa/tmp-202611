@@ -136,7 +136,7 @@ jobs:
       - name: Checkout pinned independent OCR GPU benchmark
         uses: actions/checkout@v4
         with:
-          ref: 6b41a6dd78ee8f1a37db5afe697a0e076b1817c1
+          ref: cd7abd26ad4b901d1675fd4972ae68ecb890caf3
           path: gpu-preview-src
           persist-credentials: false
       - name: Prepare static site
@@ -155,7 +155,7 @@ jobs:
           cp ndlocr-lite-v2/{index.html,app.mjs,ocr-logic.mjs,table-logic.mjs} dist/ndlocr-lite-v2/
           mkdir -p dist/ndlocr-gpu
           cp gpu-preview-src/ndlocr-lite-v2/{index.html,app.mjs,ocr-logic.mjs,table-logic.mjs} dist/ndlocr-gpu/
-          printf '%s\n' '6b41a6dd78ee8f1a37db5afe697a0e076b1817c1' > dist/ndlocr-gpu/source-commit.txt
+          printf '%s\n' 'cd7abd26ad4b901d1675fd4972ae68ecb890caf3' > dist/ndlocr-gpu/source-commit.txt
           # Preserve the last successfully published translator if native Safari
           # validation has not produced a new runtime. Never deploy the mock.
           rm -rf dist/translate
