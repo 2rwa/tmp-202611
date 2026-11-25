@@ -109,7 +109,7 @@ async function main(){
   },{candidate:true});
   await feature('09-crop',async()=>{
    const f=await image('crop',{w:900,h:240,lines:[{text:'不要な文字',x:40,y:20},{text:'選択範囲',x:40,y:150}]});await load(f);
-   await page.locator('#crop').click();const rect=await page.locator('#preview').boundingBox();assert.ok(rect);await page.mouse.move(rect.x+10*rect.width/900,rect.y+130*rect.height/240);await page.mouse.down();await page.mouse.move(rect.x+330*rect.width/900,rect.y+220*rect.height/240,{steps:8});await page.mouse.up();const out=await runOCR();assert.equal(norm(out.actual).join(''),'選択範囲');const j=await json('crop-result');validBoxes(j);assert.ok(j.region.y1>100&&j.region.y2<240);assert.ok(j.lines.every(b=>b.y1>=j.region.y1&&b.y2<=j.region.y2&&b.x1>=j.region.x1&&b.x2<=j.region.x2));await page.locator('#crop-clear').click();assert.equal(await page.locator('#crop-info').innerText(),'画像全体');assert.equal(await page.locator('#save').isDisabled(),true);return {...out,region:j.region};
+   await page.locator('#crop').click();await page.locator('#preview').scrollIntoViewIfNeeded();const rect=await page.locator('#preview').boundingBox();assert.ok(rect);await page.mouse.move(rect.x+10*rect.width/900,rect.y+130*rect.height/240);await page.mouse.down();await page.mouse.move(rect.x+330*rect.width/900,rect.y+220*rect.height/240,{steps:8});await page.mouse.up();assert.match(await page.locator('#crop-info').innerText(),/^範囲:/,'pointer selection committed');const out=await runOCR();assert.equal(norm(out.actual).join(''),'選択範囲');const j=await json('crop-result');validBoxes(j);assert.ok(j.region.y1>100&&j.region.y2<240);assert.ok(j.lines.every(b=>b.y1>=j.region.y1&&b.y2<=j.region.y2&&b.x1>=j.region.x1&&b.x2<=j.region.x2));await page.locator('#crop-clear').click();assert.equal(await page.locator('#crop-info').innerText(),'画像全体');assert.equal(await page.locator('#save').isDisabled(),true);return {...out,region:j.region};
   },{requires:['#crop']});
   await feature('10-variants',async()=>{
    const f=await image('variants',{w:700,h:80,lines:[{text:'國學體會',x:15,y:15}]});await load(f,'line');await page.locator('#normalize-variants').uncheck();const original=await runOCR();assert.equal(norm(original.actual).join(''),'國學體會');await page.locator('#normalize-variants').check();const out=await runOCR();assert.equal(norm(out.actual).join(''),'国学体会');const j=await json('variants-result');assert.equal(j.normalizedVariants,true);assert.equal(norm(j.lines[0].rawText).join(''),'國學體會');assert.equal(norm(j.lines[0].text).join(''),'国学体会');await page.locator('#normalize-variants').uncheck();return {...out,original:original.actual};
@@ -133,7 +133,20 @@ async function main(){
   await feature('14-text-daisy',async()=>{
    await page.locator('#sample').click();await page.locator('#mode').selectOption('page');await runOCR();const zip=new AdmZip(await exportFile('daisy','daisy.zip'));const entries=zip.getEntries().filter(x=>!x.isDirectory);const names=entries.map(x=>x.entryName);
    assert.ok(names.some(n=>/\.opf$/i.test(n)),'OPF');assert.ok(names.some(n=>/\.ncx$/i.test(n)),'NCX');assert.ok(names.some(n=>/\.smil$/i.test(n)),'SMIL');assert.ok(entries.some(x=>/\.(xml|xhtml|html)$/i.test(x.entryName)&&x.getData().toString('utf8').includes('国立国会図書館')),'DAISY text');
-   return {names};
+   const xmls=Object.fromEntries(entries.filter(x=>/\.(xml|opf|ncx|smil)$/i.test(x.entryName)).map(x=>[x.entryName,x.getData().toString('utf8')]));
+   const links=await page.evaluate(xmls=>{
+    const docs=Object.fromEntries(Object.entries(xmls).map(([n,s])=>[n,new DOMParser().parseFromString(s,'application/xml')]));
+    const errors=[];let refs=0;
+    for(const [name,d] of Object.entries(docs)){
+     if(d.querySelector('parsererror'))errors.push(name+': parsererror');
+     for(const el of d.querySelectorAll('[src],[smilref],[href]')){
+      const ref=el.getAttribute('src')||el.getAttribute('smilref')||el.getAttribute('href');
+      if(!ref||!ref.includes('#'))continue;refs++;const [f,id]=ref.split('#');
+      if(!docs[f]||!Array.from(docs[f].querySelectorAll('[id]')).some(x=>x.getAttribute('id')===id))errors.push(name+': '+ref);
+     }
+    }return {errors,refs};
+   },xmls);assert.deepEqual(links.errors,[]);assert.ok(links.refs>=6);
+   return {names,links};
   },{requires:['#export-format','#export']});
   await feature('15-multi-image',async()=>{
    const a=await image('batch-a',{w:700,h:90,lines:[{text:'FIRST IMAGE',x:20,y:20}]}),b=await image('batch-b',{w:700,h:90,lines:[{text:'SECOND IMAGE',x:20,y:20}]});

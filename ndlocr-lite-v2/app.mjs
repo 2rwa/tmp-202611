@@ -1,6 +1,7 @@
+import {exportDaisy} from './daisy.mjs';
 import {openPDF,renderInput,exportDocument,searchablePDF} from './document-io.mjs';
 import {decodeTable,assignTableLines,tableHTML,escapeHTML} from './table-logic.mjs';
-import {recognizeCascade,readingOrder,inclusionFromCSV,cropRect,cropPoint,suppressLines,inkBounds,tcySegments,codepoints} from './ocr-logic.mjs';
+import {recognizeCascade,readingOrder,inclusionFromCSV,cropRect,cropPoint,suppressLines,inkBounds,tcySegments,codepoints,splitWideLine} from './ocr-logic.mjs';
 // Experimental JS port of preprocessing and decoding in NDL's NDLOCR-Lite 2.0.0 (CC BY 4.0).
 const $=id=>document.getElementById(id);
 const revision='1f3adc7af311af1ce4cbbd4d9089f30781d01313';
@@ -28,7 +29,8 @@ async function getInclusion(){if(inclusion)return inclusion;if(!inclusionPromise
 function clearResult(){lastResult=null;$('result').value='';$('save').disabled=true;$('export').disabled=true;$('table-preview').replaceChildren();}
 function paintSelection(r=selection){const ctx=preview.getContext('2d');ctx.drawImage(source,0,0);if(!r)return;ctx.fillStyle='rgba(0,0,0,.35)';ctx.fillRect(0,0,source.width,r.y1);ctx.fillRect(0,r.y2,source.width,source.height-r.y2);ctx.fillRect(0,r.y1,r.x1,r.y2-r.y1);ctx.fillRect(r.x2,r.y1,source.width-r.x2,r.y2-r.y1);ctx.strokeStyle='#0284c7';ctx.lineWidth=Math.max(2,source.width/500);ctx.strokeRect(r.x1,r.y1,r.x2-r.x1,r.y2-r.y1);}
 function cropState(on){cropActive=on;$('crop').setAttribute('aria-pressed',String(on));preview.style.cursor=on?'crosshair':'';preview.style.touchAction=on?'none':'';}
-function updateSelection(r){selection=r;pageSelections[pageIndex]=r;pageResults[pageIndex]=null;clearResult();paintSelection();$('crop-info').textContent=r?`範囲: ${r.x1},${r.y1} / ${r.x2-r.x1} × ${r.y2-r.y1}`:'画像全体';status('画像準備完了','ready');}
+const regionLabel=r=>r?`範囲: ${r.x1},${r.y1} / ${r.x2-r.x1} × ${r.y2-r.y1}`:'画像全体';
+function updateSelection(r){selection=r;pageSelections[pageIndex]=r;pageResults[pageIndex]=null;clearResult();paintSelection();$('crop-info').textContent=regionLabel(r);status('画像準備完了','ready');}
 $('crop').onclick=()=>{cropState(!cropActive);if(cropActive)paintSelection();};
 $('crop-clear').onclick=()=>{cropState(false);updateSelection(null);};
 const pointer=e=>{const r=preview.getBoundingClientRect(),s=getComputedStyle(preview);const l=parseFloat(s.borderLeftWidth)||0,t=parseFloat(s.borderTopWidth)||0,rr=parseFloat(s.borderRightWidth)||0,b=parseFloat(s.borderBottomWidth)||0;return cropPoint(e.clientX,e.clientY,{left:r.left+l,top:r.top+t,width:r.width-l-rr,height:r.height-t-b},source.width,source.height);};
@@ -54,7 +56,7 @@ function busy(on){documentBusy=on;for(const id of controlIDs)$(id).disabled=on;u
 function showSource(){
  preview.width=source.width;preview.height=source.height;cropState(false);dragStart=null;
  selection=pageSelections[pageIndex]||null;clearResult();paintSelection();
- $('crop-info').textContent=selection?'選択範囲':'画像全体';
+ $('crop-info').textContent=regionLabel(selection);
  const result=pageResults[pageIndex];
  if(result){lastResult=result;$('result').value=result.text;drawBoxes(result.lines);if(result.tableCells?.length)drawTable(result.tableCells);status('完了: '+result.lines.length+' 行 / '+result.elapsedMs+' ms','done');}
  else status('画像準備完了','ready');
@@ -194,6 +196,33 @@ async function inferTable(region,lines){
  try{out=await s.run({[s.inputNames[0]]:x});const cells=assignTableLines(decodeTable(out,region),lines);log('TableCenterNet '+Math.round(time()-started)+' ms; cells '+cells.length+'; outputs '+Object.keys(out).join(', '));return cells;}
  finally{x.dispose();if(out)for(const v of Object.values(out))v.dispose();}
 }
+async function refineTableCells(cells,mapper){
+ for(const c of cells){
+  if(!c.lines.length)continue;
+  const pad=Math.max(3,Math.min(10,Math.round(Math.min(c.x2-c.x1,c.y2-c.y1)*.06)));
+  const b={x1:Math.ceil(c.x1)+pad,y1:Math.ceil(c.y1)+pad,x2:Math.floor(c.x2)-pad,y2:Math.floor(c.y2)-pad};
+  if(b.x2-b.x1<4||b.y2-b.y1<4)continue;
+  const inner=inkBounds(regionPixels(b),b.x2-b.x1,b.y2-b.y1);if(!inner)continue;
+  const tight={x1:b.x1+inner.x1,y1:b.y1+inner.y1,x2:b.x1+inner.x2,y2:b.y1+inner.y2};
+  // Only use the single-line refinement on geometrically one-line cells.
+  const span=c.lines.map(l=>(l.y1+l.y2)/2);if(Math.max(...span)-Math.min(...span)>(tight.y2-tight.y1)*.55)continue;
+  if(tight.y2-tight.y1>(c.y2-c.y1)*.75)continue;
+  const raw=await recognize(await model('rec30'),tight,{forceHorizontal:true});
+  if(raw.trim()){c.rawText=c.text;c.text=mapper?mapper.apply(raw):raw;c.refined=true;}
+ }
+ return cells;
+}
+async function recognizeWide(box,read,simple){
+ const w=box.x2-box.x1,h=box.y2-box.y1;
+ if(w/h<75)return recognizeCascade(box,read,{simple});
+ const parts=splitWideLine(regionPixels(box),w,h);if(!parts.length)return recognizeCascade(box,read,{simple});
+ let text='',trace=[];
+ for(let i=0;i<parts.length;i++){
+  const p=parts[i],r=await recognizeCascade({...box,x1:box.x1+p.x1,x2:box.x1+p.x2,count:1},read,{simple:true});
+  text+=r.text;trace.push(...r.trace.map(t=>({...t,part:i===0?'left':i===parts.length-1?'right':'middle',segment:i+1})));
+ }
+ return {text,trace};
+}
 function drawTable(cells){const ctx=preview.getContext('2d');ctx.strokeStyle='#0891b2';ctx.lineWidth=Math.max(2,source.width/500);for(const cell of cells){ctx.beginPath();cell.corners.forEach(([x,y],i)=>i?ctx.lineTo(x,y):ctx.moveTo(x,y));ctx.closePath();ctx.stroke();}$('table-preview').innerHTML=cells.length?tableHTML(cells):'<p>表セルが検出されませんでした。</p>';}
 function drawBoxes(boxes){paintSelection();const ctx=preview.getContext('2d');ctx.strokeStyle='#e11d48';ctx.fillStyle='#e11d48';ctx.lineWidth=Math.max(2,source.width/500);ctx.font=Math.max(14,source.width/60)+'px sans-serif';for(const [i,b] of boxes.entries()){ctx.strokeRect(b.x1,b.y1,b.x2-b.x1,b.y2-b.y1);ctx.fillText(String(i+1),b.x1,Math.max(15,b.y1));}}
 async function runPage(){
@@ -206,8 +235,8 @@ async function runPage(){
   if(!boxes.length)throw Error('文字行が検出されません。1行画像モードも試してください。');
   const rt=time(),simple=$('cascade').value==='simple';
   const read=async(tier,b)=>readTCY(await model(tier===100?'rec':'rec'+tier),b);
-  for(let i=0;i<boxes.length;i++){status('文字認識 '+(i+1)+' / '+boxes.length);await yieldUI();const result=await recognizeCascade(boxes[i],read,{simple});boxes[i].rawText=result.text;boxes[i].text=mapper?mapper.apply(result.text):result.text;boxes[i].recognition=result.trace;log('line '+(i+1)+' cascade '+result.trace.map(x=>x.tier+(x.part?':'+x.part:'')+'('+x.length+')').join(' -> '));$('result').value=boxes.slice(0,i+1).map(b=>b.text).join('\n');}
-  let cells=[];if($('table-structure').checked){status('表構造認識中');await yieldUI();cells=await inferTable(region,boxes);drawTable(cells);}
+  for(let i=0;i<boxes.length;i++){status('文字認識 '+(i+1)+' / '+boxes.length);await yieldUI();const result=await recognizeWide(boxes[i],read,simple);boxes[i].rawText=result.text;boxes[i].text=mapper?mapper.apply(result.text):result.text;boxes[i].recognition=result.trace;log('line '+(i+1)+' cascade '+result.trace.map(x=>x.tier+(x.part?':'+x.part:'')+'('+x.length+')').join(' -> '));$('result').value=boxes.slice(0,i+1).map(b=>b.text).join('\n');}
+  let cells=[];if($('table-structure').checked){status('表構造認識中');await yieldUI();cells=await inferTable(region,boxes);await refineTableCells(cells,mapper);drawTable(cells);}
   const total=Math.round(time()-t);log('PARSeq '+Math.round(time()-rt)+' ms; total '+total+' ms; requested EP '+ep);
   lastResult={version:'2.0.0',name:entries[pageIndex].name,page:pageIndex+1,revision,requestedEP:ep,ortVersion,optimization,mode,recognitionMode:simple?'simple':'cascade',normalizedVariants:normalize,tcy:$('enable-tcy').checked,region,width:source.width,height:source.height,elapsedMs:total,tableCells:cells,lines:boxes,text:$('result').value};
   pageResults[pageIndex]=lastResult;status('完了: '+boxes.length+' 行 / '+total+' ms','done');return lastResult;
@@ -226,9 +255,9 @@ $('export').onclick=async()=>{
  if(documentBusy||!pageResults.length||!pageResults.every(Boolean))return;
  const fmt=$('export-format').value;busy(true);
  try{
-  const content=fmt==='pdf'?await searchablePDF(entries,pageResults,(i,n)=>status('PDF出力 '+i+' / '+n)):exportDocument(pageResults,fmt);
-  const mime={pdf:'application/pdf',xml:'application/xml;charset=utf-8',tei:'application/xml;charset=utf-8',html:'text/html;charset=utf-8',markdown:'text/markdown;charset=utf-8',txt:'text/plain;charset=utf-8'}[fmt];
-  const url=URL.createObjectURL(new Blob([content],{type:mime}));const a=document.createElement('a');a.href=url;a.download='ndlocr-result.'+fmt;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  const content=fmt==='daisy'?exportDaisy(pageResults):fmt==='pdf'?await searchablePDF(entries,pageResults,(i,n)=>status('PDF出力 '+i+' / '+n)):exportDocument(pageResults,fmt);
+  const mime={daisy:'application/zip',pdf:'application/pdf',xml:'application/xml;charset=utf-8',tei:'application/xml;charset=utf-8',html:'text/html;charset=utf-8',markdown:'text/markdown;charset=utf-8',txt:'text/plain;charset=utf-8'}[fmt];
+  const url=URL.createObjectURL(new Blob([content],{type:mime}));const a=document.createElement('a');a.href=url;a.download='ndlocr-result.'+(fmt==='daisy'?'zip':fmt);a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
   status('出力完了: '+fmt,'done');
  }catch(e){log(String(e));status(String(e),'error');}finally{busy(false);}
 };

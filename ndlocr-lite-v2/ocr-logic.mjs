@@ -113,3 +113,18 @@ export function tcySegments(data,w,h){
  const result=[];for(let i=0;i<blocks.length;){if(flags[i]){const [a,b]=blocks[i],m=Math.max(5,Math.floor((b-a)*.5));result.push({y1:Math.max(0,a-m),y2:Math.min(h,b+m),horizontal:true});i++;}else{const start=i;while(i<blocks.length&&!flags[i])i++;result.push({y1:start>0?blocks[start-1][1]:blocks[start][0],y2:i<blocks.length?blocks[i][0]:blocks[i-1][1],horizontal:false});}}
  return result.filter(x=>x.y2>x.y1);
 }
+
+// Proactively split extremely wide single-line crops at low-ink columns.
+// This avoids stretching 100+ characters into a fixed 768-pixel tensor.
+export function splitWideLine(data,w,h){
+ if(h<1||w/h<75)return [];
+ const n=Math.ceil(w/(h*45)),projection=new Float64Array(w);
+ for(let y=0;y<h;y++)for(let x=0;x<w;x++){const i=(y*w+x)*4;projection[x]+=(255-(data[i]+data[i+1]+data[i+2])/3)/255;}
+ const cuts=[0];for(let k=1;k<n;k++){
+  const aim=w*k/n,margin=Math.max(2,Math.round(h*1.5));let best=Math.round(aim),cost=Infinity;
+  for(let x=Math.max(cuts.at(-1)+h,Math.floor(aim-margin));x<=Math.min(w-h,Math.ceil(aim+margin));x++){
+   const ink=projection[x],c=ink+Math.abs(x-aim)*.025;
+   if(c<cost){cost=c;best=x;}
+  }cuts.push(best);
+ }cuts.push(w);return cuts.slice(0,-1).map((x1,i)=>({x1,x2:cuts[i+1]}));
+}

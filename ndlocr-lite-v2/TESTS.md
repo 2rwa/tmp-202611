@@ -32,3 +32,5 @@ Case 20: experimental TCY, mixed vertical text and horizontal digits; compare en
 Case 11 enabled: actual TableCenterNet inference, model log, cell count, 3×3 HTML exact contents. table.test.mjs tests synthetic tensors, coordinate mapping, merged-cell HTML and escaping. Experimental single-region table decoder; official relocation and recovery remain pending. TXT/HTML exports now available.
 
 Cases 12, 13, 15 enabled: actual two-page PDF OCR, navigation and re-extraction from exported searchable PDF (English and Japanese), XML/TEI/Markdown, multi-image batch. Main default ORT 1.31.1; table model previously failed due to unavailable DeformConv in 1.22.0 and is now retested. PDF rendering and font URLs are pinned; native browser/real OCR tests pending.
+
+Run 45720772538: 16 PASS, 2 FAIL (crop pointer, table text), 1 PENDING (DAISY), 1 BASELINE_FAIL (long line). PDF two-page input/searchable export incl. Japanese, NDL XML/TEI/Markdown and multi-image passed. New tests verify DAISY archive/XML/cross-file links, crop selection before OCR, wide-line splitting and short-cell OCR. Table and long-line recognition still require real inference verification.

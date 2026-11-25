@@ -35,3 +35,9 @@ assert.equal(inkBounds(raster(100,50,[]),100,50),null);
 const seg=tcySegments(raster(40,140,[[5,5,35,40],[5,60,16,78],[23,60,34,78],[5,95,35,130]]),40,140);
 assert.equal(seg.length,3);assert.equal(seg[1].horizontal,true);assert.equal(seg[0].horizontal,false);
 console.log('line dedup, ink bounds and TCY projection tests passed');
+
+import {splitWideLine} from './ocr-logic.mjs';
+assert.deepEqual(splitWideLine(raster(100,20,[]),100,20),[]);
+const wide=splitWideLine(raster(2000,20,[[0,0,995,20],[1005,0,2000,20]]),2000,20);
+assert.equal(wide.length,3);assert.equal(wide[0].x1,0);assert.equal(wide.at(-1).x2,2000);assert.equal(wide[0].x2,wide[1].x1);
+console.log('wide-line geometric splitting tests passed');
