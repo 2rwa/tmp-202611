@@ -1,4 +1,4 @@
-import {recognizeCascade,readingOrder,inclusionFromCSV,cropRect,cropPoint} from './ocr-logic.mjs';
+import {recognizeCascade,readingOrder,inclusionFromCSV,cropRect,cropPoint,suppressLines,inkBounds,tcySegments,codepoints} from './ocr-logic.mjs';
 // Experimental JS port of preprocessing and decoding in NDL's NDLOCR-Lite 2.0.0 (CC BY 4.0).
 const $=id=>document.getElementById(id);
 const revision='1f3adc7af311af1ce4cbbd4d9089f30781d01313';
@@ -104,7 +104,6 @@ async function model(key){
 }
 function tensor(c,transform){const w=c.width,h=c.height,n=w*h,data=c.getContext('2d',{willReadFrequently:true}).getImageData(0,0,w,h).data,out=new Float32Array(3*n);for(let k=0;k<3;k++)for(let i=0;i<n;i++)out[k*n+i]=transform(data[i*4],data[i*4+1],data[i*4+2],k);return new ort.Tensor('float32',out,[1,3,h,w]);}
 const mean=[.485,.456,.406],sd=[.229,.224,.225];
-function suppress(boxes){const area=b=>(b.x2-b.x1)*(b.y2-b.y1);const kept=[];for(const b of [...boxes].sort((a,b)=>area(b)-area(a))){if(kept.some(a=>a.cls===b.cls&&area(a)>area(b)&&Math.max(0,Math.min(a.x2,b.x2)-Math.max(a.x1,b.x1))*Math.max(0,Math.min(a.y2,b.y2)-Math.max(a.y1,b.y1))/area(b)>=.9))continue;kept.push(b);}return kept;}
 async function detect(s,region=fullRegion()){
  const {height:ih,width:iw}=modelShapes.get(s);
  const rw=region.x2-region.x1,rh=region.y2-region.y1,side=Math.max(rw,rh),c=canvas(iw,ih),ctx=c.getContext('2d');
@@ -122,12 +121,12 @@ async function detect(s,region=fullRegion()){
   if(x2>x1&&y2>y1)arr.push({x1,y1,x2,y2,score,cls,count:counts?Number(counts.data[i]):100,style:styles?Number(styles.data[i]):0});
  }
  for(const v of o)v.dispose();x.dispose();size.dispose();
- return suppress(arr);
+ return suppressLines(arr);
 }
-async function recognize(s,b){
+async function recognize(s,b,{forceHorizontal=false}={}){
  const {height:ih,width:iw}=modelShapes.get(s);
  const w=b.x2-b.x1,h=b.y2-b.y1,c=canvas(iw,ih),ctx=c.getContext('2d');
- if(h>w*.8){ctx.translate(0,ih);ctx.rotate(-Math.PI/2);ctx.drawImage(source,b.x1,b.y1,w,h,0,0,ih,iw);}
+ if(!forceHorizontal&&h>w*.8){ctx.translate(0,ih);ctx.rotate(-Math.PI/2);ctx.drawImage(source,b.x1,b.y1,w,h,0,0,ih,iw);}
  else ctx.drawImage(source,b.x1,b.y1,w,h,0,0,iw,ih);
  // Python PARSeq preprocess reverses the input RGB channels.
  const x=tensor(c,(r,g,b,k)=>[b,g,r][k]/127.5-1);
@@ -136,20 +135,23 @@ async function recognize(s,b){
  let str='';for(let i=0;i<dims[1];i++){let best=0,score=-Infinity;for(let j=0;j<dims[2];j++){const v=y.data[i*dims[2]+j];if(v>score){score=v;best=j;}}if(best===0)break;str+=charset[best-1];}
  for(const v of Object.values(o))v.dispose();x.dispose();return str.replace(/ ([、。])/g,'$1').replace(/([、。]) /g,'$1');
 }
+function regionPixels(b){return source.getContext('2d',{willReadFrequently:true}).getImageData(b.x1,b.y1,b.x2-b.x1,b.y2-b.y1).data;}
+function trimLine(b){const r=inkBounds(regionPixels(b),b.x2-b.x1,b.y2-b.y1);return r?{...b,x1:b.x1+r.x1,y1:b.y1+r.y1,x2:b.x1+r.x2,y2:b.y1+r.y2}:b;}
+async function readTCY(s,b){const original=await recognize(s,b);if(!$('enable-tcy').checked||b.y2-b.y1<=b.x2-b.x1||!original)return original;const segments=tcySegments(regionPixels(b),b.x2-b.x1,b.y2-b.y1);if(!segments.length)return original;let result='';for(const seg of segments)result+=await recognize(s,{...b,y1:b.y1+seg.y1,y2:b.y1+seg.y2},{forceHorizontal:seg.horizontal});log('TCY candidates '+segments.filter(x=>x.horizontal).length+'; original '+codepoints(original)+' -> '+codepoints(result));return codepoints(result)>codepoints(original)?result:original;}
 function drawBoxes(boxes){paintSelection();const ctx=preview.getContext('2d');ctx.strokeStyle='#e11d48';ctx.fillStyle='#e11d48';ctx.lineWidth=Math.max(2,source.width/500);ctx.font=Math.max(14,source.width/60)+'px sans-serif';for(const [i,b] of boxes.entries()){ctx.strokeRect(b.x1,b.y1,b.x2-b.x1,b.y2-b.y1);ctx.fillText(String(i+1),b.x1,Math.max(15,b.y1));}}
 $('run').onclick=async()=>{
- const controls=['file','sample','mode','ep','order','cascade','crop','crop-clear','normalize-variants','run'].map($);controls.forEach(el=>el.disabled=true);$('log').textContent='';clearResult();cropState(false);const t=time();
+ const controls=['file','sample','mode','ep','order','cascade','crop','crop-clear','normalize-variants','enable-tcy','run'].map($);controls.forEach(el=>el.disabled=true);$('log').textContent='';clearResult();cropState(false);const t=time();
  try{
   const ep=$('ep').value,mode=$('mode').value;status('ONNX Runtime 初期化');await runtime(ep);const region=selection||fullRegion(),normalize=$('normalize-variants').checked,mapper=normalize?await getInclusion():null;let boxes;
   if(mode==='page'){const det=await model('det');status('行検出中');await yieldUI();boxes=readingOrder(await detect(det,region),$('order').value);}
-  else boxes=[{...region}];
+  else boxes=[trimLine({...region})];
   drawBoxes(boxes);log('lines: '+boxes.length);
   if(!boxes.length)throw Error('文字行が検出されません。1行画像モードも試してください。');
   const rt=time(),simple=$('cascade').value==='simple';
-  const read=async(tier,b)=>recognize(await model(tier===100?'rec':'rec'+tier),b);
+  const read=async(tier,b)=>readTCY(await model(tier===100?'rec':'rec'+tier),b);
   for(let i=0;i<boxes.length;i++){status('文字認識 '+(i+1)+' / '+boxes.length);await yieldUI();const result=await recognizeCascade(boxes[i],read,{simple});boxes[i].rawText=result.text;boxes[i].text=mapper?mapper.apply(result.text):result.text;boxes[i].recognition=result.trace;log('line '+(i+1)+' cascade '+result.trace.map(x=>x.tier+(x.part?':'+x.part:'')+'('+x.length+')').join(' -> '));$('result').value=boxes.slice(0,i+1).map(b=>b.text).join('\n');}
   const total=Math.round(time()-t);log('PARSeq '+Math.round(time()-rt)+' ms; total '+total+' ms; requested EP '+ep);
-  lastResult={version:'2.0.0',revision,requestedEP:ep,mode,recognitionMode:simple?'simple':'cascade',normalizedVariants:normalize,region,width:source.width,height:source.height,elapsedMs:total,lines:boxes,text:$('result').value};
+  lastResult={version:'2.0.0',revision,requestedEP:ep,mode,recognitionMode:simple?'simple':'cascade',normalizedVariants:normalize,tcy:$('enable-tcy').checked,region,width:source.width,height:source.height,elapsedMs:total,lines:boxes,text:$('result').value};
   $('save').disabled=false;status('完了: '+boxes.length+' 行 / '+total+' ms','done');
  }catch(e){log(e.stack||String(e));status(String(e),'error');}finally{controls.forEach(el=>el.disabled=false);}
 };

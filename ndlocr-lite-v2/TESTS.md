@@ -26,3 +26,5 @@ Next tests to add before implementing each corresponding feature: 30/50/100 casc
 Cases 18–19: real cascade inference and long horizontal line splitting (exploratory CER). logic.test.mjs tests thresholds, split geometry and XY-cut order. Short-model selection is driven by the detector, not a character-count estimate.
 
 Cases 09–10 implemented; verify actual crop coordinates in original image space, clearing selection invalidates stale output, and normalized JSON retains raw OCR text. Mapping is NDL's official character inclusion CSV (4905 entries at pinned revision), not NFKC. Tests still need real Chromium execution.
+
+Case 20: experimental TCY, mixed vertical text and horizontal digits; compare enabled/disabled output and JSON flag. Baseline quality failure is tracked. Fixes for cases 03–06, 09–10, 17: trim uniform margins in single-line mode; suppress overlapping near-identical line detections across classes. Unit tests cover geometry and TCY projection. TableCenterNet remains unimplemented.

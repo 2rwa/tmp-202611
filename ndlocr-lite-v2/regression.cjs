@@ -149,6 +149,12 @@ async function main(){
    const file=await image('long-line',{w:expected.length*42+40,h:70,lines:[{text:expected,x:10,y:10}]});
    const out=await accuracy(file,expected,{mode:'line',max:.12});const j=await json('long-line');assert.ok(j.lines[0].recognition.some(x=>x.part==='left'));assert.ok(j.lines[0].recognition.some(x=>x.part==='right'));return out;
   },{candidate:true});
+  await feature('20-tcy',async()=>{
+   const f=await image('tcy',{w:240,h:400,lines:[{text:'令',x:100,y:20},{text:'和',x:100,y:70},{text:'年',x:100,y:170},{text:'度',x:100,y:220},{text:'12',x:100,y:125}]});
+   await load(f,'line','vertical');await page.locator('#enable-tcy').uncheck();const off=await runOCR();
+   await page.locator('#enable-tcy').check();
+   try{const on=await runOCR(),j=await json('tcy-result');assert.equal(j.tcy,true);assert.ok(cer(on.actual,'令和12年度')<=.20,JSON.stringify({off:off.actual,on:on.actual}));return {...on,off:off.actual};}finally{await page.locator('#enable-tcy').uncheck();}
+  },{requires:['#enable-tcy'],candidate:true});
   await feature('16-cache-no-model-download',async()=>{
    await page.reload();await page.locator('#run').waitFor();await page.route('**/*.onnx',route=>route.abort());try{await page.locator('#sample').click();await page.locator('#mode').selectOption('page');const out=await runOCR();assert.equal(out.actual,sample);assert.equal(network.filter(r=>/\.onnx$/.test(r.url)).length,0);return out;}finally{await page.unroute('**/*.onnx');}
   });

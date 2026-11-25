@@ -71,3 +71,45 @@ export function cropRect(a,b,width,height){
 export function cropPoint(clientX,clientY,rect,width,height){
  return {x:(clientX-rect.left)*width/rect.width,y:(clientY-rect.top)*height/rect.height};
 }
+
+// Line classes can overlap across labels. Keep the strongest of substantially
+// coincident, similarly oriented lines. Never compare text strings alone.
+export function suppressLines(boxes){
+ const area=b=>width(b)*height(b),intersection=(a,b)=>Math.max(0,Math.min(a.x2,b.x2)-Math.max(a.x1,b.x1))*Math.max(0,Math.min(a.y2,b.y2)-Math.max(a.y1,b.y1));
+ const vertical=b=>height(b)>width(b)*.8;
+ const kept=[];
+ for(const b of [...boxes].sort((a,b)=>(b.score??0)-(a.score??0)||area(b)-area(a))){
+  if(kept.some(a=>{const i=intersection(a,b),min=Math.min(area(a),area(b)),max=Math.max(area(a),area(b));return min>0&&vertical(a)===vertical(b)&&i/min>=.80&&min/max>=.50;}))continue;
+  kept.push(b);
+ }
+ return kept;
+}
+// Tight ink bounds for a user-supplied single line, assuming light or dark
+// fairly uniform margins. Estimate background from border pixels.
+export function inkBounds(data,w,h){
+ if(!w||!h)return null;
+ const gray=i=>(data[i*4]+data[i*4+1]+data[i*4+2])/3;
+ const edge=[];for(let x=0;x<w;x++){edge.push(gray(x),gray((h-1)*w+x));}for(let y=0;y<h;y++){edge.push(gray(y*w),gray(y*w+w-1));}
+ const bg=median(edge),threshold=45;let x1=w,y1=h,x2=0,y2=0,n=0;
+ for(let y=0;y<h;y++)for(let x=0;x<w;x++)if(Math.abs(gray(y*w+x)-bg)>threshold){x1=Math.min(x1,x);x2=Math.max(x2,x+1);y1=Math.min(y1,y);y2=Math.max(y2,y+1);n++;}
+ if(n<4||n>w*h*.8)return null;
+ const pad=Math.max(1,Math.round(Math.min(x2-x1,y2-y1)*.035));
+ return {x1:Math.max(0,x1-pad),y1:Math.max(0,y1-pad),x2:Math.min(w,x2+pad),y2:Math.min(h,y2+pad)};
+}
+// TCY candidate segmentation follows the upstream projection heuristic.
+// Returns groups in top-to-bottom order and leaves recognition to the caller.
+export function tcySegments(data,w,h){
+ if(w<30||h<=w)return [];
+ const gray=new Float32Array(w*h);let sum=0;
+ for(let i=0;i<gray.length;i++){gray[i]=(data[i*4]+data[i*4+1]+data[i*4+2])/3;sum+=gray[i];}
+ const threshold=sum/gray.length,blocks=[];
+ for(let y=0;y<h;y++){let ink=false;for(let x=0;x<w;x++)if(gray[y*w+x]<threshold){ink=true;break;}
+  if(ink){const last=blocks.at(-1);if(last&&y-last[1]<5)last[1]=y+1;else blocks.push([y,y+1]);}}
+ const flags=blocks.map(([a,b])=>{const n=b-a;if(n<5||n>w*.75)return false;const margin=Math.max(2,Math.floor(n*.1)),cols=new Float32Array(w);
+  let mean=0,count=0;const lo=Math.max(0,a-margin),hi=Math.min(h,b+margin);for(let y=lo;y<hi;y++)for(let x=0;x<w;x++){mean+=gray[y*w+x];count++;}mean/=count;
+  for(let y=lo;y<hi;y++)for(let x=0;x<w;x++)if(gray[y*w+x]<mean)cols[x]++;
+  const peak=Math.max(...cols);let components=0,on=false;for(const v of cols){if(v>peak*.1){if(!on)components++;on=true;}else on=false;}return components>=2;});
+ if(!flags.some(Boolean))return [];
+ const result=[];for(let i=0;i<blocks.length;){if(flags[i]){const [a,b]=blocks[i],m=Math.max(5,Math.floor((b-a)*.5));result.push({y1:Math.max(0,a-m),y2:Math.min(h,b+m),horizontal:true});i++;}else{const start=i;while(i<blocks.length&&!flags[i])i++;result.push({y1:start>0?blocks[start-1][1]:blocks[start][0],y2:i<blocks.length?blocks[i][0]:blocks[i-1][1],horizontal:false});}}
+ return result.filter(x=>x.y2>x.y1);
+}
