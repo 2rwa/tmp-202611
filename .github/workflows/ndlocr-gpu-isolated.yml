@@ -28,30 +28,6 @@ jobs:
             ndlocr-lite-v2/det-patched.onnx
             ndlocr-lite-v2/det-patch.json
           if-no-files-found: error
-  mac-original:
-    runs-on: macos-15
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - name: Inspect actual macOS GPU
-        run: |
-          sw_vers
-          uname -m
-          system_profiler SPDisplaysDataType
-      - run: |
-          npm install --no-save --no-package-lock playwright@1.56.1
-          echo "ORT_VERSION=$(npm view onnxruntime-web version)" >> "$GITHUB_ENV"
-          node --check ndlocr-lite-v2/mac-gpu-bench.cjs
-      - name: Native Chrome warm OCR comparison
-        run: node ndlocr-lite-v2/mac-gpu-bench.cjs
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: mac-original-${{ github.run_attempt }}
-          path: ndlocr-mac-proof/
   patched-gpu:
     needs: patch
     runs-on: ubuntu-24.04
@@ -81,30 +57,35 @@ jobs:
         with:
           name: patched-gpu-${{ github.run_attempt }}
           path: ndlocr-gpu-proof/
-  mac-patched:
-    needs: patch
-    runs-on: macos-15
-    timeout-minutes: 60
+  browser-benchmark:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - uses: actions/download-artifact@v4
-        with:
-          name: verified-detector-${{ github.run_attempt }}
-          path: ndlocr-lite-v2
       - run: |
-          sw_vers
-          system_profiler SPDisplaysDataType
+          node --check ndlocr-lite-v2/app.mjs
+          node --check ndlocr-lite-v2/benchmark-ui.test.cjs
+          sudo apt-get update
+          sudo apt-get install -y fonts-noto-cjk
           npm install --no-save --no-package-lock playwright@1.56.1
-          echo "ORT_VERSION=$(npm view onnxruntime-web version)" >> "$GITHUB_ENV"
-      - name: Native Chrome patched detector benchmark
-        env:
-          DET_PATCH: '1'
-        run: node ndlocr-lite-v2/mac-gpu-bench.cjs
+          npx playwright install --with-deps chromium
+      - name: Browser benchmark UI (WASM baseline, no GPU available)
+        run: node ndlocr-lite-v2/benchmark-ui.test.cjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: mac-patched-${{ github.run_attempt }}
-          path: ndlocr-mac-proof/
+          name: mac-browser-benchmark
+          path: |
+            ndlocr-lite-v2/index.html
+            ndlocr-lite-v2/app.mjs
+            ndlocr-lite-v2/ocr-logic.mjs
+            ndlocr-lite-v2/table-logic.mjs
+            ndlocr-lite-v2/GPU-DEVELOPMENT.md
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: benchmark-ui-proof
+          path: benchmark-ui-proof/

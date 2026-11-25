@@ -1,5 +1,5 @@
-"""Diagnose the DEIM integral MatMul and make an algebraically equivalent patch.
-Only K-vector or K-by-1 RHS is supported. Fail closed otherwise.
+"""Diagnose the DEIM integral MatMul and normalize its rank-1 RHS.
+Only K-vector RHS is supported. Fail closed otherwise.
 Original weights: NDL NDLOCR-Lite v2 (CC BY 4.0).
 """
 import hashlib, json, pathlib, urllib.request
@@ -43,12 +43,13 @@ opset=next(i.version for i in m.opset_import if i.domain in ("","ai.onnx"))
 assert opset>=13,opset
 prefix="gpu_integral_"
 axis=prefix+"axis";m.graph.initializer.append(numpy_helper.from_array(np.array([-1],dtype=np.int64),axis))
-mul=prefix+"mul";vec=b;nodes=[]
-if len(bs)==2:
-    vec=prefix+"vector"
-    nodes.append(helper.make_node("Squeeze",[b,axis],[vec],name=prefix+"squeeze"))
-nodes.append(helper.make_node("Mul",[a,vec],[mul],name=prefix+"mul"))
-nodes.append(helper.make_node("ReduceSum",[mul,axis],list(n.output),keepdims=int(len(bs)==2),name=prefix+"reduce"))
+assert len(bs)==1, "rank-normalization candidate requires rank-1 RHS"
+vec=prefix+"column";product=prefix+"matmul"
+nodes=[
+    helper.make_node("Unsqueeze",[b,axis],[vec],name=prefix+"unsqueeze"),
+    helper.make_node("MatMul",[a,vec],[product],name=prefix+"matmul"),
+    helper.make_node("Squeeze",[product,axis],list(n.output),name=prefix+"squeeze"),
+]
 idx=next(i for i,node in enumerate(m.graph.node) if node.name==n.name)
 del m.graph.node[idx]
 for i,node in enumerate(nodes): m.graph.node.insert(idx+i,node)

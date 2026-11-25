@@ -25,4 +25,9 @@ To test the patched model, either download the verified-detector artifact into n
     /tmp/ndlocr-gpu-venv/bin/python ndlocr-lite-v2/patch-deim.py
     DET_PATCH=1 ORT_VERSION=$(npm view onnxruntime-web version) HEADLESS=0 node ndlocr-lite-v2/mac-gpu-bench.cjs
 
-CI workflow: .github/workflows/ndlocr-gpu-isolated.yml. The CPU patch parity, software GPU correctness, native macOS original and patched benchmarks are separated. macOS tests explicitly fail acceptance if hardware cannot be identified, even when text recognition succeeds. The original branch/main model remains unchanged.
+CI workflow: .github/workflows/ndlocr-gpu-isolated.yml. CPU patch parity, software GPU correctness and browser benchmark UI are independent jobs; real Mac speed measurement is manual. The original branch/main model remains unchanged.
+
+## Actual Mac: browser-only measurement (primary workflow)
+No hosted macOS runner speed tests. Use the browser benchmark on the user's own Mac. Download the branch archive or the mac-browser-benchmark Actions artifact, serve the files over localhost with python3 -m http.server 8000, then open the page in Chrome. Select an image or the built-in sample, click WASM / WebGPU 比較開始. Four modes are measured with one cold run and 3 or 5 warm repetitions. Median end-to-end time, per-model session.run times and GPU dispatch/submit counts are recorded. The JSON omits recognized text and source pixels, but includes equality to the WASM reference, image dimensions and GPU diagnostics. Cold means fresh sessions; model download may hit cache. The 1.5x target is provisional; real Mac measurements decide. The standalone benchmark does not require Node or a Mac runner. Keep native CLI benchmark optional, not CI.
+
+Patch iteration: initial Mul+ReduceSum candidate failed strict full-model CPU parity (19/1200 label positions differed on a synthetic input). Current candidate uses rank-2 RHS MatMul followed by Squeeze to avoid rank-1 WebGPU handling without changing the operation. The strict parity check is retained; no unverified model is shipped.

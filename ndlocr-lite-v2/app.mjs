@@ -19,7 +19,24 @@ const specs={
 };
 const source=document.createElement('canvas'), preview=$('preview');
 let ort, charset, activeEP, sessions={}, lastResult=null;
-const modelShapes=new WeakMap();
+const modelShapes=new WeakMap(),modelKeys=new WeakMap();
+let benchmarkBusy=false,runBusy=false,benchmarkReport=null,runMetrics=null;
+const gpuTrace={dispatch:0,submit:0,devices:[],errors:[],hooks:[]};
+function instrumentGPU(){
+ for(const [proto,method,key] of [[globalThis.GPUComputePassEncoder?.prototype,'dispatchWorkgroups','dispatch'],[globalThis.GPUComputePassEncoder?.prototype,'dispatchWorkgroupsIndirect','dispatch'],[globalThis.GPUQueue?.prototype,'submit','submit']]){
+  if(!proto||typeof proto[method]!=='function')continue;
+  const f=proto[method];try{proto[method]=function(...args){gpuTrace[key]++;return f.apply(this,args);};if(proto[method]!==f)gpuTrace.hooks.push(method);}catch{}
+ }
+ const p=globalThis.GPUAdapter?.prototype;if(p&&typeof p.requestDevice==='function'){
+  const f=p.requestDevice;try{p.requestDevice=async function(...args){const d=await f.apply(this,args),i=this.info||{};gpuTrace.devices.push({vendor:i.vendor||'',architecture:i.architecture||'',description:i.description||'',isFallbackAdapter:i.isFallbackAdapter??this.isFallbackAdapter??null});d.addEventListener('uncapturederror',e=>gpuTrace.errors.push(e.error.message));d.lost.then(x=>{if(x.reason!=='destroyed')gpuTrace.errors.push('device lost '+x.message);});return d;};if(p.requestDevice!==f)gpuTrace.hooks.push('requestDevice');}catch{}
+ }
+}
+instrumentGPU();
+async function runModel(session,feeds){
+ const t=time(),before=gpuTrace.dispatch,sub=gpuTrace.submit,key=modelKeys.get(session)||'unknown';
+ try{return await session.run(feeds);}finally{if(runMetrics){const m=runMetrics.models[key]||={ms:0,calls:0,dispatch:0,submit:0};m.ms+=time()-t;m.calls++;m.dispatch+=gpuTrace.dispatch-before;m.submit+=gpuTrace.submit-sub;}}
+}
+
 let selection=null,dragStart=null,cropActive=false,inclusion=null,inclusionPromise=null;
 const fullRegion=()=>({x1:0,y1:0,x2:source.width,y2:source.height});
 async function getInclusion(){if(inclusion)return inclusion;if(!inclusionPromise)inclusionPromise=(async()=>{const r=await fetch(raw+'config/character_inclusion_mapping.csv');if(!r.ok)throw Error('character inclusion HTTP '+r.status);const m=inclusionFromCSV(await r.text());log('character inclusion: '+m.size+' mappings');return inclusion=m;})().finally(()=>{inclusionPromise=null;});return inclusionPromise;}
@@ -111,7 +128,7 @@ async function model(key){
  }
  const t=time();status('ONNX 初期化: '+key);await yieldUI();
  log(key+' providers requested: '+modelEP(key).join(',')+'; ORT '+ortVersion+'; graph '+optimization);const s=await ort.InferenceSession.create(bytes,{executionProviders:modelEP(key),graphOptimizationLevel:optimization});
- const shape=imageShapeFromONNX(bytes,s.inputNames[0]);modelShapes.set(s,shape);log(key+' image input: '+shape.height+' x '+shape.width);
+ const shape=imageShapeFromONNX(bytes,s.inputNames[0]);modelShapes.set(s,shape);modelKeys.set(s,key);log(key+' image input: '+shape.height+' x '+shape.width);
  sessions[key]=s;log(key+' session '+Math.round(time()-t)+' ms; inputs '+s.inputNames.join(', ')+'; outputs '+s.outputNames.join(', '));return s;
 }
 function tensor(c,transform){const w=c.width,h=c.height,n=w*h,data=c.getContext('2d',{willReadFrequently:true}).getImageData(0,0,w,h).data,out=new Float32Array(3*n);for(let k=0;k<3;k++)for(let i=0;i<n;i++)out[k*n+i]=transform(data[i*4],data[i*4+1],data[i*4+2],k);return new ort.Tensor('float32',out,[1,3,h,w]);}
@@ -122,7 +139,7 @@ async function detect(s,region=fullRegion()){
  ctx.fillStyle='black';ctx.fillRect(0,0,iw,ih);ctx.drawImage(source,region.x1,region.y1,rw,rh,0,0,iw*rw/side,ih*rh/side);
  const x=tensor(c,(r,g,b,k)=>(([r,g,b][k]/255)-mean[k])/sd[k]);
  const size=new ort.Tensor('int64',BigInt64Array.from([BigInt(ih),BigInt(iw)]),[1,2]);
- const t=time();const out=await s.run({[s.inputNames[0]]:x,[s.inputNames[1]]:size});
+ const t=time();const out=await runModel(s,{[s.inputNames[0]]:x,[s.inputNames[1]]:size});
  const o=s.outputNames.map(n=>out[n]);if(![3,4,6].includes(o.length))throw Error('Unexpected DEIM outputs: '+o.length);
  const [labels,coords,scores,counts,styles]=o;log('DEIM '+Math.round(time()-t)+' ms; shapes '+o.map(v=>v.dims.join('x')).join(', '));
  const arr=[];const clamp=(v,max,dim)=>Math.max(0,Math.min(max,Math.trunc(v*side/dim)));
@@ -161,8 +178,9 @@ async function inferTable(region,lines){
 }
 function drawTable(cells){const ctx=preview.getContext('2d');ctx.strokeStyle='#0891b2';ctx.lineWidth=Math.max(2,source.width/500);for(const cell of cells){ctx.beginPath();cell.corners.forEach(([x,y],i)=>i?ctx.lineTo(x,y):ctx.moveTo(x,y));ctx.closePath();ctx.stroke();}$('table-preview').innerHTML=cells.length?tableHTML(cells):'<p>表セルが検出されませんでした。</p>';}
 function drawBoxes(boxes){paintSelection();const ctx=preview.getContext('2d');ctx.strokeStyle='#e11d48';ctx.fillStyle='#e11d48';ctx.lineWidth=Math.max(2,source.width/500);ctx.font=Math.max(14,source.width/60)+'px sans-serif';for(const [i,b] of boxes.entries()){ctx.strokeRect(b.x1,b.y1,b.x2-b.x1,b.y2-b.y1);ctx.fillText(String(i+1),b.x1,Math.max(15,b.y1));}}
-$('run').onclick=async()=>{
- const controls=['file','sample','mode','ep','order','cascade','crop','crop-clear','normalize-variants','enable-tcy','table-structure','export-format','run'].map($);controls.forEach(el=>el.disabled=true);$('log').textContent='';clearResult();cropState(false);const t=time();
+async function runOCR(){
+ if(runBusy)return null;runBusy=true;runMetrics={models:{}};
+ const controls=['file','sample','mode','ep','order','cascade','crop','crop-clear','normalize-variants','enable-tcy','table-structure','export-format','benchmark','bench-count','run'].map($);controls.forEach(el=>el.disabled=true);$('log').textContent='';clearResult();cropState(false);const t=time();
  try{
   const ep=$('ep').value,mode=$('mode').value;status('ONNX Runtime 初期化');await runtime(ep);const region=selection||fullRegion(),normalize=$('normalize-variants').checked,mapper=normalize?await getInclusion():null;let boxes;
   if(mode==='page'){const det=await model('det');status('行検出中');await yieldUI();boxes=readingOrder(await detect(det,region),$('order').value);}
@@ -174,10 +192,12 @@ $('run').onclick=async()=>{
   for(let i=0;i<boxes.length;i++){status('文字認識 '+(i+1)+' / '+boxes.length);await yieldUI();const result=await recognizeCascade(boxes[i],read,{simple});boxes[i].rawText=result.text;boxes[i].text=mapper?mapper.apply(result.text):result.text;boxes[i].recognition=result.trace;log('line '+(i+1)+' cascade '+result.trace.map(x=>x.tier+(x.part?':'+x.part:'')+'('+x.length+')').join(' -> '));$('result').value=boxes.slice(0,i+1).map(b=>b.text).join('\n');}
   let cells=[];if($('table-structure').checked){status('表構造認識中');await yieldUI();cells=await inferTable(region,boxes);drawTable(cells);}
   const total=Math.round(time()-t);log('PARSeq '+Math.round(time()-rt)+' ms; total '+total+' ms; requested EP '+ep);
-  lastResult={version:'2.0.0',revision,requestedEP:ep,ortVersion,optimization,mode,recognitionMode:simple?'simple':'cascade',normalizedVariants:normalize,tcy:$('enable-tcy').checked,region,width:source.width,height:source.height,elapsedMs:total,tableCells:cells,lines:boxes,text:$('result').value};
+  lastResult={version:'2.0.0',revision,requestedEP:ep,ortVersion,optimization,mode,recognitionMode:simple?'simple':'cascade',normalizedVariants:normalize,tcy:$('enable-tcy').checked,region,width:source.width,height:source.height,elapsedMs:total,metrics:runMetrics,tableCells:cells,lines:boxes,text:$('result').value};
   $('save').disabled=false;$('export').disabled=false;status('完了: '+boxes.length+' 行 / '+total+' ms','done');
- }catch(e){log(e.stack||String(e));status(String(e),'error');}finally{controls.forEach(el=>el.disabled=false);}
-};
+ return lastResult;
+ }catch(e){log(e.stack||String(e));status(String(e),'error');return null;}finally{runBusy=false;controls.forEach(el=>el.disabled=benchmarkBusy);}
+}
+$('run').onclick=()=>runOCR();
 $('copy').onclick=async()=>{try{await navigator.clipboard.writeText($('result').value);}catch(e){log(String(e));}};
 $('save').onclick=()=>{if(!lastResult)return;const url=URL.createObjectURL(new Blob([JSON.stringify(lastResult,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='ndlocr-v2.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
 drawSample();
@@ -188,3 +208,62 @@ $('export').onclick=()=>{
  const content=fmt==='html'?'<!doctype html><html lang="ja"><meta charset="utf-8"><title>NDLOCR result</title><style>table{border-collapse:collapse}td{border:1px solid #888;padding:6px}</style>'+ (lastResult.tableCells.length?tableHTML(lastResult.tableCells):'<pre>'+escapeHTML(lastResult.text)+'</pre>')+'</html>':lastResult.text;
  const url=URL.createObjectURL(new Blob([content],{type:fmt==='html'?'text/html;charset=utf-8':'text/plain;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download='ndlocr-result.'+fmt;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 };
+
+const median=values=>{const s=[...values].sort((a,b)=>a-b),n=s.length;return n?(s[Math.floor((n-1)/2)]+s[Math.floor(n/2)])/2:null;};
+function renderBench(rows){
+ const body=$('bench-results');body.replaceChildren();
+ for(const r of rows){
+  const tr=document.createElement('tr'),f=x=>Number.isFinite(x)?Math.round(x).toLocaleString():'—';
+  for(const v of [r.ep,r.state,f(r.coldMs),f(r.warmMs),f(r.detMs),f(r.recMs),f(r.dispatch),r.speedup?r.speedup.toFixed(2)+'×':'—',r.matches===null?'—':r.matches?'一致':'不一致']){
+   const td=document.createElement('td');td.textContent=v;tr.append(td);
+  }
+  body.append(tr);
+ }
+}
+async function runBenchmark(){
+ if(runBusy||benchmarkBusy)return;benchmarkBusy=true;benchmarkReport=null;$('bench-save').disabled=true;$('bench-copy').disabled=true;
+ const ids=['file','sample','mode','ep','order','cascade','crop','crop-clear','normalize-variants','enable-tcy','table-structure','export-format','benchmark','bench-count','run'],controls=ids.map($);
+ const epBefore=$('ep').value,modeBefore=$('mode').value,tableBefore=$('table-structure').checked;
+ controls.forEach(e=>e.disabled=true);$('mode').value='page';$('table-structure').checked=false;cropState(false);
+ const rows=[],count=Number($('bench-count').value),baseline={text:null,ms:null};
+ const info={browser:navigator.userAgent,ortVersion,optimization,detPatch:params.get('detpatch')==='1',image:{width:source.width,height:source.height,region:selection||fullRegion()},recognizer:$('cascade').value,order:$('order').value,tcy:$('enable-tcy').checked,normalized:$('normalize-variants').checked,warmRuns:count,startedAt:new Date().toISOString()};
+ try{
+  for(const ep of ['wasm','webgpu-rec','webgpu-det','webgpu']){
+   const row={ep,state:'計測中',coldMs:null,warmMs:null,detMs:null,recMs:null,dispatch:null,speedup:null,matches:null,runs:[]};rows.push(row);renderBench(rows);
+   $('ep').value=ep;
+   // Release prior sessions so each first run is a separate initialization sample.
+   for(const s of Object.values(sessions))await s.release();sessions={};activeEP=null;
+   const deviceStart=gpuTrace.devices.length,errorStart=gpuTrace.errors.length;
+   for(let i=0;i<=count;i++){
+    $('bench-status').textContent=ep+' '+(i===0?'初回（集計外）':i+' / '+count);
+    const before=gpuTrace.dispatch,sub=gpuTrace.submit,t=time(),r=await runOCR(),wall=time()-t;
+    if(!r){row.state='エラー';row.error=$('status').textContent;row.log=$('log').textContent;break;}
+    const models=r.metrics.models,det=models.det?.ms||0,rec=Object.entries(models).filter(([k])=>k.startsWith('rec')).reduce((n,[,m])=>n+m.ms,0);
+    if(ep==='wasm'&&i===0)baseline.text=r.text;
+    row.runs.push({cold:i===0,elapsedMs:r.elapsedMs,wallMs:wall,detMs:det,recMs:rec,dispatch:gpuTrace.dispatch-before,submit:gpuTrace.submit-sub,models,matches:baseline.text===null?null:r.text===baseline.text,lines:r.lines.length,characters:Array.from(r.text).length});
+   }
+   row.devices=gpuTrace.devices.slice(deviceStart);row.gpuErrors=gpuTrace.errors.slice(errorStart);
+   row.coldMs=row.runs[0]?.elapsedMs??null;
+   const warm=row.runs.filter(x=>!x.cold);
+   if(warm.length===count&&row.state!=='エラー'){
+    row.warmMs=median(warm.map(x=>x.elapsedMs));row.detMs=median(warm.map(x=>x.detMs));row.recMs=median(warm.map(x=>x.recMs));row.dispatch=median(warm.map(x=>x.dispatch));
+    row.matches=baseline.text===null?null:warm.every(x=>x.matches===true);
+    row.gpuVerified=ep!=='wasm'&&warm.every(x=>x.dispatch>0&&x.submit>0)&&row.gpuErrors.length===0;
+    row.appleGPU=row.gpuVerified&&row.devices.length>0&&row.devices.every(d=>/apple/i.test([d.vendor,d.architecture,d.description].join(' '))&&d.isFallbackAdapter!==true&&!/swiftshader|software/i.test([d.vendor,d.architecture,d.description].join(' ')));
+    if(ep==='wasm')baseline.ms=row.warmMs;
+    if(ep!=='wasm'&&baseline.ms&&row.warmMs)row.speedup=baseline.ms/row.warmMs;
+    row.state=ep==='wasm'?'完了':row.gpuVerified?'GPU演算確認':'GPU未確認';
+   }
+   renderBench(rows);
+  }
+ }catch(e){$('bench-status').textContent=String(e);rows.push({ep:'benchmark',state:'エラー',error:String(e)});}
+ finally{
+  benchmarkReport={...info,completedAt:new Date().toISOString(),gpuHooks:[...gpuTrace.hooks],rows};
+  $('bench-status').textContent='計測終了。失敗条件も含めてJSONに保存できます。';
+  $('ep').value=epBefore;$('mode').value=modeBefore;$('table-structure').checked=tableBefore;
+  benchmarkBusy=false;controls.forEach(e=>e.disabled=false);$('bench-save').disabled=false;$('bench-copy').disabled=false;
+ }
+}
+$('benchmark').onclick=runBenchmark;
+$('bench-save').onclick=()=>{if(!benchmarkReport)return;const url=URL.createObjectURL(new Blob([JSON.stringify(benchmarkReport,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='ndlocr-gpu-benchmark.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
+$('bench-copy').onclick=async()=>{if(!benchmarkReport)return;try{await navigator.clipboard.writeText(JSON.stringify(benchmarkReport,null,2));$('bench-status').textContent='JSONをコピーしました';}catch(e){$('bench-status').textContent=String(e);}};
