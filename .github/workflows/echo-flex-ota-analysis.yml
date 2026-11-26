@@ -1,0 +1,59 @@
+name: Echo Flex public OTA inventory
+on:
+  push:
+    branches: [echo-flex-ota-analysis]
+    paths: ['.github/workflows/echo-flex-ota-analysis.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - version: '3471'
+            url: 'https://d1s31zyz7dcc2d.cloudfront.net/a0c799d0fff44a2cc55584f9ee631aa5/update-kindle-croissant-NS6547_user_3471_0005738696580.bin'
+            md5: '99ab7914acf70a27bb363b4b49868fed'
+          - version: '8349'
+            url: 'https://d1s31zyz7dcc2d.cloudfront.net/2026/10/27/3b1c17c9-cbf4-4d0c-a552-fa8fc23e9117/update-kindle-croissant-NS6575_user_8349_0013323246980.bin'
+            md5: '579826d10e6711fd259f7dd68e2a0cd9'
+    steps:
+      - name: Fetch and verify original OTA
+        run: |
+          curl -fL --retry 2 --max-time 180 '${{ matrix.url }}' -o ota.bin
+          echo '${{ matrix.md5 }}  ota.bin' | md5sum -c -
+          file ota.bin
+          unzip -l ota.bin
+          unzip -j ota.bin payload.bin
+      - name: Extract system image
+        run: |
+          go install github.com/ssut/payload-dumper-go@latest
+          "$(go env GOPATH)/bin/payload-dumper-go" -p system -o extracted payload.bin
+          file extracted/system.img
+          sha256sum extracted/system.img
+          mkdir fs
+          debugfs -R "rdump / $PWD/fs" extracted/system.img
+      - name: Inventory USB accessory references
+        run: |
+          python3 - <<'PY'
+          import pathlib,re,subprocess
+          root=pathlib.Path('fs')
+          files=[p for p in root.rglob('*') if p.is_file() and not p.is_symlink()]
+          print('Extracted regular files:',len(files))
+          if not files: raise SystemExit('No files extracted')
+          print('USB/accessory-related filenames:')
+          for p in files:
+              if re.search(r'usb|accessor|serial|thirdreality|motion|nightlight|croissant|clock',str(p),re.I): print(p)
+          pattern=re.compile(rb'third.?reality|3rnl040u|tr-ums|usb.{0,24}accessor|accessor.{0,24}usb|ttyACM|cdc.acm|night.?light|smart.?clock|motion.?sensor',re.I)
+          for p in files:
+              try:
+                  result=subprocess.run(['strings','-a',str(p)],capture_output=True,check=False)
+                  matches=[x.decode('utf-8','replace')[:200] for x in result.stdout.splitlines() if pattern.search(x)]
+              except OSError: continue
+              if matches:
+                  print(str(p),len(matches),'matches')
+                  for x in list(dict.fromkeys(matches))[:10]: print(' ',x)
+          PY
