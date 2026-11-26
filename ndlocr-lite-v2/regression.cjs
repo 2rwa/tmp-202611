@@ -120,6 +120,17 @@ async function main(){
    const html=await fs.readFile(await exportFile('html','table.html'),'utf8');const cells=await page.evaluate(html=>Array.from(new DOMParser().parseFromString(html,'text/html').querySelectorAll('table tr')).map(tr=>Array.from(tr.querySelectorAll('td,th')).map(td=>td.textContent.trim())),html);
    assert.deepEqual(cells,values,JSON.stringify(j.tableCells.map(c=>({row:c.startRow,col:c.startCol,text:c.text,rawText:c.rawText,refinement:c.refinement,crop:[c.x1,c.y1,c.x2,c.y2]}))));return {cells};}finally{await page.locator('#table-structure').uncheck();}
   },{requires:['#table-structure','#export-format','#export']});
+  await feature('22-edit-table',async()=>{
+   const root=page.locator('#editor-panel');
+   if(!await root.evaluate(el=>el.open))await root.locator('summary').click();
+   const e=page.locator('#cell-editor textarea').nth(4),original=await e.inputValue();
+   await e.fill('訂正<&');
+   const j=await json('edited-table');assert.equal(j.tableCells[4].text,'訂正<&');assert.equal(j.tableCells[4].originalText,original);
+   const html=await fs.readFile(await exportFile('html','edited-table.html'),'utf8');
+   assert.match(html,/訂正&lt;&amp;/);
+   await page.locator('#cell-editor button').nth(4).click();assert.equal(await e.inputValue(),original);
+   return {original,restored:true};
+  },{requires:['#cell-editor','#export-format','#export']});
   await feature('12-pdf-multipage-searchable',async()=>{
    const f=await makePDF();await page.locator('#file').setInputFiles(f);await page.waitForFunction(()=>document.querySelector('#status').dataset.state==='ready');await runOCR();
    await page.locator('#page-next').click();await page.waitForFunction(()=>document.querySelector('#status').dataset.state==='done'&&document.querySelector('#page-info').textContent.startsWith('2 /'));assert.match(await page.locator('#result').inputValue(),/SECOND PAGE OCR/);await page.locator('#page-prev').click();await page.waitForFunction(()=>document.querySelector('#status').dataset.state==='done'&&document.querySelector('#page-info').textContent.startsWith('1 /'));assert.match(await page.locator('#result').inputValue(),/FIRST PAGE OCR/);
@@ -153,6 +164,25 @@ async function main(){
    await page.locator('#file').setInputFiles([a,b]);await page.waitForFunction(()=>document.querySelector('#status').dataset.state==='ready');await page.locator('#mode').selectOption('page');await runOCR();
    assert.match(await page.locator('#result').inputValue(),/FIRST IMAGE/);await page.locator('#page-next').click();await page.waitForFunction(()=>document.querySelector('#status').dataset.state==='done'&&document.querySelector('#page-info').textContent.startsWith('2 /'));assert.match(await page.locator('#result').inputValue(),/SECOND IMAGE/);await page.locator('#page-prev').click();await page.waitForFunction(()=>document.querySelector('#status').dataset.state==='done'&&document.querySelector('#page-info').textContent.startsWith('1 /'));assert.match(await page.locator('#result').inputValue(),/FIRST IMAGE/);
   },{requires:['#page-next','#page-prev']});
+  await feature('21-edit-multipage',async()=>{
+   // Previous multi-image test leaves page one of two selected.
+   if(!await page.locator('#editor-panel').evaluate(el=>el.open))await page.locator('#editor-panel summary').click();
+   const editor=page.locator('#line-editor textarea').first(),original=await editor.inputValue();
+   await editor.fill('訂正した本文');
+   assert.equal(await page.locator('#result').inputValue(),'訂正した本文');
+   const j=await json('edited-page');assert.equal(j.lines[0].text,'訂正した本文');assert.equal(j.lines[0].originalText,original);assert.equal(j.edited,true);
+   assert.ok(j.lines[0].x2>j.lines[0].x1);
+   await page.locator('#page-next').click();await page.waitForFunction(()=>document.querySelector('#page-info').textContent.startsWith('2 /')&&!document.querySelector('#run').disabled);
+   assert.match(await page.locator('#result').inputValue(),/SECOND IMAGE/);
+   await page.locator('#page-prev').click();await page.waitForFunction(()=>document.querySelector('#page-info').textContent.startsWith('1 /')&&!document.querySelector('#run').disabled);
+   assert.equal(await page.locator('#result').inputValue(),'訂正した本文');
+   const txt=await fs.readFile(await exportFile('txt','edited.txt'),'utf8');assert.match(txt,/訂正した本文/);assert.match(txt,/SECOND IMAGE/);
+   const xml=await fs.readFile(await exportFile('xml','edited.xml'),'utf8');assert.match(xml,/STRING="訂正した本文"/);
+   const tei=await fs.readFile(await exportFile('tei','edited.tei'),'utf8');assert.match(tei,/訂正した本文/);
+   const zip=new AdmZip(await exportFile('daisy','edited.zip'));assert.match(zip.getEntry('page-1.xml').getData().toString('utf8'),/訂正した本文/);
+   await page.locator('#line-editor button').first().click();assert.equal(await page.locator('#result').inputValue(),original);
+   return {original,restored:true};
+  },{requires:['#editor-panel','#line-editor','#page-next','#page-prev']});
   await feature('18-cascade-models',async()=>{
    await page.locator('#sample').click();await page.locator('#mode').selectOption('page');await page.locator('#order').selectOption('auto');await page.locator('#cascade').selectOption('cascade');
    try{const out=await runOCR(),j=await json('cascade');assert.equal(j.recognitionMode,'cascade');assert.equal(j.lines.length,3);assert.ok(cer(out.actual,sample)<=.08,JSON.stringify(out.actual));assert.ok(j.lines.every(b=>b.recognition.length>0));assert.ok(j.lines.some(b=>b.recognition[0].tier<100),'detector never selected short model');assert.match(out.log,/rec(30|50) image input:/);assert.ok(j.lines.every(b=>b.recognition[0].tier===30||b.recognition[0].tier===50||b.recognition[0].tier===100));return {...out,tiers:j.lines.map(b=>b.recognition)};}finally{await page.locator('#cascade').selectOption('simple');}

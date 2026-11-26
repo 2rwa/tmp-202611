@@ -32,3 +32,5 @@ See [TESTS.md](TESTS.md) for the feature contract, fixtures and test command. OC
 - 複数画像/PDF入力（最大200ページ）、全ページ順次OCR、結果をページ単位に保持、前後ページ移動。PDF.jsで入力を最大2.5倍にレンダリング。TXT/HTML/NDL XML/TEI/Markdownおよび検索可能PDFを全ページ出力。検索可能PDFは原文をラスタ化した画像に不可視テキストを重ねる試作で、元PDFのリンクやベクトル構造は保持しない。日本語フォントは必要時だけ取得。DAISYは未実装。
 
 - Text DAISY 3 ZIP: DTBook / SMIL / NCX / OPF / CSS, page navigation and phrase references. Text only, no audio; simplified page-per-section, no official paragraph/figure processing or reader compatibility certification. Table refinement reruns short single-line cells with horizontal orientation. Extreme horizontal lines split at low-ink columns before recognition.
+
+- 認識結果の訂正: ページ単位の行エディタと表セルエディタ。本文訂正は TXT/XML/TEI/検索可能PDF/DAISY 等の本文に反映し、セル訂正は HTML/Markdown の表と JSON に反映。座標と訂正前文字列を保持。ページ移動時に訂正内容を保持し、再OCR時には再生成する。

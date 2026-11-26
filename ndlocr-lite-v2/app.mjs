@@ -26,7 +26,7 @@ let entries=[],pageResults=[],pageSelections=[],pageIndex=0,documentBusy=false;
 let selection=null,dragStart=null,cropActive=false,inclusion=null,inclusionPromise=null;
 const fullRegion=()=>({x1:0,y1:0,x2:source.width,y2:source.height});
 async function getInclusion(){if(inclusion)return inclusion;if(!inclusionPromise)inclusionPromise=(async()=>{const r=await fetch(raw+'config/character_inclusion_mapping.csv');if(!r.ok)throw Error('character inclusion HTTP '+r.status);const m=inclusionFromCSV(await r.text());log('character inclusion: '+m.size+' mappings');return inclusion=m;})().finally(()=>{inclusionPromise=null;});return inclusionPromise;}
-function clearResult(){lastResult=null;$('result').value='';$('save').disabled=true;$('export').disabled=true;$('table-preview').replaceChildren();}
+function clearResult(){lastResult=null;$('result').value='';$('save').disabled=true;$('export').disabled=true;$('table-preview').replaceChildren();$('line-editor').replaceChildren();$('cell-editor').replaceChildren();$('editor-panel').hidden=true;}
 function paintSelection(r=selection){const ctx=preview.getContext('2d');ctx.drawImage(source,0,0);if(!r)return;ctx.fillStyle='rgba(0,0,0,.35)';ctx.fillRect(0,0,source.width,r.y1);ctx.fillRect(0,r.y2,source.width,source.height-r.y2);ctx.fillRect(0,r.y1,r.x1,r.y2-r.y1);ctx.fillRect(r.x2,r.y1,source.width-r.x2,r.y2-r.y1);ctx.strokeStyle='#0284c7';ctx.lineWidth=Math.max(2,source.width/500);ctx.strokeRect(r.x1,r.y1,r.x2-r.x1,r.y2-r.y1);}
 function cropState(on){cropActive=on;$('crop').setAttribute('aria-pressed',String(on));preview.style.cursor=on?'crosshair':'';preview.style.touchAction=on?'none':'';}
 const regionLabel=r=>r?`範囲: ${r.x1},${r.y1} / ${r.x2-r.x1} × ${r.y2-r.y1}`:'画像全体';
@@ -52,13 +52,13 @@ function updateNavigation(){
  $('save').disabled=documentBusy||!lastResult;
  $('export').disabled=documentBusy||!entries.length||pageResults.length!==entries.length||!pageResults.every(Boolean);
 }
-function busy(on){documentBusy=on;for(const id of controlIDs)$(id).disabled=on;updateNavigation();}
+function busy(on){documentBusy=on;for(const id of controlIDs)$(id).disabled=on;for(const e of document.querySelectorAll('#editor-panel textarea,#editor-panel button'))e.disabled=on;updateNavigation();}
 function showSource(){
  preview.width=source.width;preview.height=source.height;cropState(false);dragStart=null;
  selection=pageSelections[pageIndex]||null;clearResult();paintSelection();
  $('crop-info').textContent=regionLabel(selection);
  const result=pageResults[pageIndex];
- if(result){lastResult=result;$('result').value=result.text;drawBoxes(result.lines);if(result.tableCells?.length)drawTable(result.tableCells);status('完了: '+result.lines.length+' 行 / '+result.elapsedMs+' ms','done');}
+ if(result){lastResult=result;$('result').value=result.text;drawBoxes(result.lines);if(result.tableCells?.length)drawTable(result.tableCells);renderEditors();status('完了: '+result.lines.length+' 行 / '+result.elapsedMs+' ms','done');}
  else status('画像準備完了','ready');
  updateNavigation();
 }
@@ -205,15 +205,15 @@ async function refineTableCells(cells,mapper,region){
   const ink=inkBounds(regionPixels(b),b.x2-b.x1,b.y2-b.y1);if(!ink)continue;
   const tight={x1:b.x1+ink.x1,y1:b.y1+ink.y1,x2:b.x1+ink.x2,y2:b.y1+ink.y2};
   const h=tight.y2-tight.y1,w=tight.x2-tight.x1;
-  const span=c.lines.map(l=>(l.y1+l.y2)/2);if(span.length&&Math.max(...span)-Math.min(...span)>h*.55)continue;
+  const span=c.lines.map(l=>(l.y1+l.y2)/2);if(span.length&&Math.max(...span)-Math.min(...span)>h*.55&&w>h*1.6)continue;
   if(h>(c.y2-c.y1)*.75)continue;
   work.push({c,tight,h,w});
  }
  const heights=work.filter(x=>x.w>x.h*1.8).map(x=>x.h).sort((a,b)=>a-b),ref=heights[Math.floor(heights.length/2)]||0;
  for(const {c,tight,h,w} of work){
   const aspects=shortCellCandidates(tight,ref);if(!aspects.length)continue;
-  const s=await model('rec30'),candidates=[];
-  for(const padAspect of aspects){const r=await recognize(s,tight,{forceHorizontal:true,padAspect,referenceHeight:ref,details:true});if(r.text.trim())candidates.push({...r,padAspect});}
+  const candidates=[];
+  for(const tier of ['rec30','rec']){const s=await model(tier);for(const padAspect of [0,...aspects,10]){const r=await recognize(s,tight,{forceHorizontal:true,padAspect,referenceHeight:ref,details:true});if(r.text.trim())candidates.push({...r,padAspect,tier});}}
   // Select only plausible one-glyph output when the cropped geometry suggests
   // an isolated glyph. Preserve existing plausible text unless confidence
   // and consensus justify replacement. Log candidates for later inspection.
@@ -239,6 +239,41 @@ async function recognizeWide(box,read,simple){
  return {text,trace};
 }
 function drawTable(cells){const ctx=preview.getContext('2d');ctx.strokeStyle='#0891b2';ctx.lineWidth=Math.max(2,source.width/500);for(const cell of cells){ctx.beginPath();cell.corners.forEach(([x,y],i)=>i?ctx.lineTo(x,y):ctx.moveTo(x,y));ctx.closePath();ctx.stroke();}$('table-preview').innerHTML=cells.length?tableHTML(cells):'<p>表セルが検出されませんでした。</p>';}
+function updateEditedResult(){
+ if(!lastResult)return;
+ lastResult.text=lastResult.lines.map(l=>l.text).join('\n');
+ $('result').value=lastResult.text;
+ lastResult.edited=lastResult.lines.some(l=>l.edited)||lastResult.tableCells.some(c=>c.edited);
+ if(lastResult.tableCells.length)drawTable(lastResult.tableCells);
+ $('edit-status').textContent=lastResult.edited?'訂正済み（出力に反映）':'未訂正';
+}
+function renderEditors(){
+ const panel=$('editor-panel'),lineRoot=$('line-editor'),cellRoot=$('cell-editor');
+ lineRoot.replaceChildren();cellRoot.replaceChildren();panel.hidden=!lastResult;if(!lastResult)return;
+ const result=lastResult;
+ function add(root,item,label,kind,index){
+  const wrap=document.createElement('label');wrap.className='edit-row';
+  const caption=document.createElement('span');caption.textContent=label;
+  const input=document.createElement('textarea');input.rows=2;input.value=item.text;input.dataset.kind=kind;input.dataset.index=String(index);input.setAttribute('aria-label',label);input.disabled=documentBusy;
+  const original=item.originalText??item.text;
+  input.addEventListener('input',()=>{
+   if(documentBusy||lastResult!==result)return;
+   item.originalText??=original;item.text=input.value.replace(/\r\n?/g,'\n');item.edited=item.text!==item.originalText;
+   if(kind==='line'){
+    for(const cell of result.tableCells){if(cell.edited||!cell.lines.includes(item))continue;cell.text=cell.lines.map(l=>l.text).join('\n');}
+   }
+   updateEditedResult();
+   if(kind==='line')for(const box of cellRoot.querySelectorAll('textarea'))box.value=result.tableCells[Number(box.dataset.index)].text;
+  });
+  const reset=document.createElement('button');reset.type='button';reset.textContent='元に戻す';reset.disabled=documentBusy;
+  reset.addEventListener('click',()=>{input.value=original;input.dispatchEvent(new Event('input',{bubbles:true}));});
+  wrap.append(caption,input,reset);root.append(wrap);
+ }
+ result.lines.forEach((l,i)=>add(lineRoot,l,'行 '+(i+1),'line',i));
+ result.tableCells.forEach((c,i)=>add(cellRoot,c,'表 '+c.startRow+'行 '+c.startCol+'列','cell',i));
+ $('cell-editor-heading').hidden=!result.tableCells.length;
+ $('edit-status').textContent=result.edited?'訂正済み（出力に反映）':'未訂正';
+}
 function drawBoxes(boxes){paintSelection();const ctx=preview.getContext('2d');ctx.strokeStyle='#e11d48';ctx.fillStyle='#e11d48';ctx.lineWidth=Math.max(2,source.width/500);ctx.font=Math.max(14,source.width/60)+'px sans-serif';for(const [i,b] of boxes.entries()){ctx.strokeRect(b.x1,b.y1,b.x2-b.x1,b.y2-b.y1);ctx.fillText(String(i+1),b.x1,Math.max(15,b.y1));}}
 async function runPage(){
  $('log').textContent='';clearResult();cropState(false);const t=time();
@@ -254,7 +289,7 @@ async function runPage(){
   let cells=[];if($('table-structure').checked){status('表構造認識中');await yieldUI();cells=await inferTable(region,boxes);await refineTableCells(cells,mapper,region);drawTable(cells);}
   const total=Math.round(time()-t);log('PARSeq '+Math.round(time()-rt)+' ms; total '+total+' ms; requested EP '+ep);
   lastResult={version:'2.0.0',name:entries[pageIndex].name,page:pageIndex+1,revision,requestedEP:ep,ortVersion,optimization,mode,recognitionMode:simple?'simple':'cascade',normalizedVariants:normalize,tcy:$('enable-tcy').checked,region,width:source.width,height:source.height,elapsedMs:total,tableCells:cells,lines:boxes,text:$('result').value};
-  pageResults[pageIndex]=lastResult;status('完了: '+boxes.length+' 行 / '+total+' ms','done');return lastResult;
+  pageResults[pageIndex]=lastResult;renderEditors();status('完了: '+boxes.length+' 行 / '+total+' ms','done');return lastResult;
  }catch(e){log(e.stack||String(e));status(String(e),'error');throw e;}
 }
 $('run').onclick=async()=>{
