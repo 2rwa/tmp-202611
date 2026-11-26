@@ -56,6 +56,17 @@ function renderTIFF(entry,target){
  }finally{delete p.data;}
 }
 let jpxPromise;
+// jpeg2000 v1.1.1 core-utils uses Node Buffer's three endian readers.
+// Scope the adapter to the input view, without modifying native prototypes.
+export function jpxBuffer(bytes){
+ const view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);
+ Object.defineProperties(bytes,{
+  readInt8:{value:offset=>view.getInt8(offset)},
+  readUInt16BE:{value:offset=>view.getUint16(offset,false)},
+  readUInt32BE:{value:offset=>view.getUint32(offset,false)}
+ });
+ return bytes;
+}
 export function jpxHeader(bytes){
  const v=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),end=v.byteLength;
  if(end<42)throw Error('JPEG 2000 header truncated');
@@ -87,7 +98,7 @@ async function renderJPX(file,target){
  if(!jpxPromise)jpxPromise=import('https://cdn.jsdelivr.net/npm/jpeg2000@1.1.1/+esm').catch(e=>{jpxPromise=null;throw e;});
  const mod=await jpxPromise,JpxImage=mod.JpxImage||mod.default?.JpxImage;
  if(typeof JpxImage!=='function')throw Error('JPEG 2000 decoder missing');
- const jpx=new JpxImage();jpx.failOnCorruptedImage=true;jpx.parse(bytes.subarray(header.start,header.stop));
+ const jpx=new JpxImage();jpx.failOnCorruptedImage=true;jpx.parse(jpxBuffer(bytes.subarray(header.start,header.stop)));
  const {width:w,height:h,components:n}=header;
  if(jpx.width!==w||jpx.height!==h||jpx.componentsCount!==n||!jpx.tiles?.length)throw Error('JPEG 2000 decoded dimensions mismatch');
  target.width=w;target.height=h;const g=target.getContext('2d');g.fillStyle='white';g.fillRect(0,0,w,h);

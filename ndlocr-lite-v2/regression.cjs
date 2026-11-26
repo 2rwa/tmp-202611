@@ -210,6 +210,12 @@ async function main(){
    return {pages:2,compression:'deflate'};
   },{requires:['#page-next','#page-prev']});
   await feature('24-jpeg2000',async()=>{
+   const adapter=await page.evaluate(async()=>{
+    const {jpxBuffer}=await import('./document-io.mjs');
+    const raw=new Uint8Array([99,0xff,0x12,0x34,0x56,77]),v=jpxBuffer(raw.subarray(1,5));
+    let bounds=false;try{v.readUInt32BE(1);}catch(e){bounds=e instanceof RangeError;}
+    return {signed:v.readInt8(0),u16:v.readUInt16BE(1),u32:v.readUInt32BE(0),bounds,prototype:typeof Uint8Array.prototype.readUInt16BE};
+   });assert.deepEqual(adapter,{signed:-1,u16:0x1234,u32:0xff123456,bounds:true,prototype:'undefined'});
    const a=await image('jp2-a',{w:768,h:128,lines:[{text:'JPEG 2000 RGB',x:20,y:20}]}),b=await image('jp2-b',{w:768,h:128,lines:[{text:'JPEG 2000 GRAY',x:20,y:20}]});
    const f=path.join(OUT,'rgb.jp2'),g=path.join(OUT,'gray.j2k');
    execFileSync('/usr/bin/python3',['-c','from PIL import Image,features; import sys; assert features.check("jpg_2000"); Image.open(sys.argv[1]).convert("RGB").save(sys.argv[3],tile_size=(256,128),irreversible=False); Image.open(sys.argv[2]).convert("L").save(sys.argv[4],format="JPEG2000",no_jp2=True,irreversible=False)',a,b,f,g]);

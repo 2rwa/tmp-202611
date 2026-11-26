@@ -4,6 +4,12 @@
 set -euo pipefail
 echo 'available=false' >> "$GITHUB_OUTPUT"
 mkdir -p downloaded/previous-site
+full_site_ok(){
+  local root="$1"
+  for file in index.html games/v1-classic.html games/v4-speed.html games/v5-orbit.html games/v6-orbit.html orbit/physics.js orbit/v6-physics.js geo-mcp/index.html geo-mcp/app.js fm-lab/index.html fm-lab/audio-worklet.mjs ndlocr-lite-v2/index.html ndlocr-gpu/index.html translate/index.html translate/app.js translate/wasm/wllama.wasm translate/compat/wllama.js translate/compat/wllama.wasm; do
+    [ -s "$root/$file" ] || return 1
+  done
+}
 headers=(-H "Authorization: Bearer $API_TOKEN" -H "Accept: application/vnd.github+json")
 runs=$(curl --fail --silent --show-error --retry 3 "${headers[@]}" \
  "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/pages.yml/runs?status=success&per_page=50") || runs='{"workflow_runs":[]}'
@@ -28,7 +34,8 @@ for run_entry in $(printf '%s' "$runs" | jq -r '.workflow_runs[] | select(.head_
   if [ -s downloaded/previous-site/translate/app.js ] && \
      [ -s downloaded/previous-site/translate/wasm/wllama.wasm ] && \
      [ -s downloaded/previous-site/translate/compat/wllama.js ] && \
-     [ -s downloaded/previous-site/translate/compat/wllama.wasm ]; then
+     [ -s downloaded/previous-site/translate/compat/wllama.wasm ] && \
+     { [ "${REQUIRE_FULL_SITE:-false}" != true ] || full_site_ok downloaded/previous-site; }; then
     echo "Previous Pages artifact from successful run ${run_id}; preserving validated translator."
     echo 'available=true' >> "$GITHUB_OUTPUT"
     exit 0
@@ -36,6 +43,10 @@ for run_entry in $(printf '%s' "$runs" | jq -r '.workflow_runs[] | select(.head_
   rm -rf downloaded/previous-site
   mkdir -p downloaded/previous-site
 done
+if [ "${REQUIRE_FULL_SITE:-false}" = true ]; then
+  echo 'No intact previous full-site artifact; refuse OCR-only deployment.' >&2
+  exit 1
+fi
 # Prior Pages artifacts have short retention. Reuse the *currently published*
 # translator as a last resort; do not ship mock JavaScript or mismatched WASM.
 base="https://${GITHUB_REPOSITORY%%/*}.github.io/${GITHUB_REPOSITORY#*/}/translate"

@@ -42,49 +42,79 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Determine whether only OCR changed
+        id: scope
+        env:
+          BEFORE: ${{ github.event.before }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          echo 'ocr_only=false' >> "$GITHUB_OUTPUT"
+          if [ "$EVENT" != push ] || [ -z "$BEFORE" ]; then exit 0; fi
+          if ! git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            git fetch --depth=1 origin "$BEFORE" || exit 0
+          fi
+          changed=$(git diff --name-only "$BEFORE" "$GITHUB_SHA")
+          if printf '%s\n' "$changed" | grep -q '^ndlocr-lite-v2/' && ! printf '%s\n' "$changed" | grep -Evq '^(ndlocr-lite-v2/|\.github/workflows/pages\.yml$|scripts/reuse-pages-artifact\.sh$)'; then
+            echo 'ocr_only=true' >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
       - name: Assemble all four historical HTML versions
+        if: steps.scope.outputs.ocr_only != 'true'
         run: node scripts/build-site.cjs
       - name: Test gallery, archived games and physics
+        if: steps.scope.outputs.ocr_only != 'true'
         run: node tests/game.test.cjs
       - name: Physics and gameplay model regressions
+        if: steps.scope.outputs.ocr_only != 'true'
         run: |
           node tests/orbit.test.cjs
           node tests/orbit-paddle.test.cjs
           node tests/orbit-v6.test.cjs
       - name: Install headless Chromium
+        if: steps.scope.outputs.ocr_only != 'true'
         run: |
           npm install --no-save --no-package-lock playwright@1.56.1 esbuild@0.25.12 @wllama/wllama@3.8.1
           npx playwright install --with-deps chromium
       - name: Test UI and real gameplay in Chromium
+        if: steps.scope.outputs.ocr_only != 'true'
         run: |
           node tests/orbit.browser.cjs
           node tests/orbit-v6.browser.cjs
           node tests/orbit-v6-stages.browser.cjs
       - name: Test MLIT MCP mock and JS syntax
+        if: steps.scope.outputs.ocr_only != 'true'
         run: |
           node tests/geo-mcp.test.cjs
           node --check geo-mcp/app.js
       - name: Test FM synthesis and analytic gradient optimization
+        if: steps.scope.outputs.ocr_only != 'true'
         run: |
           node tests/fm-lab.test.mjs
           node --check fm-lab/app.mjs
           node --check fm-lab/audio-worklet.mjs
           node --check fm-lab/fit-worker.mjs
       - name: Test FM Lab in Chromium
+        if: steps.scope.outputs.ocr_only != 'true'
         run: node tests/fm-lab.browser.cjs
       # NDLOCR is tested independently by ndlocr-lite-v2.yml; failures must not block experimental Pages releases.
       - name: Test PFML3 prompts and glossary
+        if: steps.scope.outputs.ocr_only != 'true'
         run: node tests/translate.test.cjs
       - name: Build translator regression bundle
+        if: steps.scope.outputs.ocr_only != 'true'
         run: node scripts/build-translate.cjs --mock
       - name: Test translation UI in real Chromium
+        if: steps.scope.outputs.ocr_only != 'true'
         run: node tests/translate.browser.cjs
       - name: Verify GitHub Star buttons in Chromium
+        if: steps.scope.outputs.ocr_only != 'true'
         run: node tests/github-star.browser.cjs
       - name: Find latest native macOS Safari-verified PLaMo runtime
+        if: steps.scope.outputs.ocr_only != 'true'
         id: verified
         env:
           API_TOKEN: ${{ github.token }}
@@ -112,7 +142,7 @@ jobs:
             echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
           fi
       - name: Download native Safari-verified PLaMo JavaScript and WebAssembly
-        if: steps.verified.outputs.available == 'true'
+        if: steps.scope.outputs.ocr_only != 'true' && steps.verified.outputs.available == 'true'
         uses: actions/download-artifact@v4
         with:
           name: plamo-safari-verified-runtime
@@ -121,7 +151,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: downloaded
       - name: Reuse last successfully published Pages artifact if no Safari runtime is available
-        if: steps.verified.outputs.available != 'true'
+        if: steps.scope.outputs.ocr_only != 'true' && steps.verified.outputs.available != 'true'
         id: previous_site
         env:
           API_TOKEN: ${{ github.token }}
@@ -134,13 +164,32 @@ jobs:
           path: test-artifacts/
           if-no-files-found: ignore
       - name: Checkout pinned independent OCR GPU benchmark
+        if: steps.scope.outputs.ocr_only != 'true'
         uses: actions/checkout@v4
         with:
           ref: cd7abd26ad4b901d1675fd4972ae68ecb890caf3
           path: gpu-preview-src
           persist-credentials: false
+      - name: Restore complete published site for OCR-only changes
+        if: steps.scope.outputs.ocr_only == 'true'
+        id: ocr_site
+        env:
+          API_TOKEN: ${{ github.token }}
+          REQUIRE_FULL_SITE: 'true'
+        run: bash scripts/reuse-pages-artifact.sh
+      - name: Overlay OCR only, retaining every other published file
+        if: steps.ocr_site.outputs.available == 'true'
+        run: |
+          mkdir -p dist
+          cp -a downloaded/previous-site/. dist/
+          rm -rf dist/ndlocr-lite-v2
+          mkdir -p dist/ndlocr-lite-v2
+          cp ndlocr-lite-v2/{index.html,app.mjs,ocr-logic.mjs,table-logic.mjs,document-io.mjs,daisy.mjs} dist/ndlocr-lite-v2/
+          printf '%s\n' "$GITHUB_SHA" > dist/ndlocr-lite-v2/source-commit.txt
+          for f in dist/ndlocr-lite-v2/*.mjs; do node --check "$f"; done
+          diff -qr --exclude=ndlocr-lite-v2 downloaded/previous-site dist
       - name: Prepare static site
-        if: steps.verified.outputs.available == 'true' || steps.previous_site.outputs.available == 'true'
+        if: steps.scope.outputs.ocr_only != 'true' && (steps.verified.outputs.available == 'true' || steps.previous_site.outputs.available == 'true')
         env:
           VERIFIED: ${{ steps.verified.outputs.available }}
           PREVIOUS: ${{ steps.previous_site.outputs.available }}
@@ -153,6 +202,7 @@ jobs:
           cp -r fm-lab dist/fm-lab
           mkdir -p dist/ndlocr-lite-v2
           cp ndlocr-lite-v2/{index.html,app.mjs,ocr-logic.mjs,table-logic.mjs,document-io.mjs,daisy.mjs} dist/ndlocr-lite-v2/
+          printf '%s\n' "$GITHUB_SHA" > dist/ndlocr-lite-v2/source-commit.txt
           mkdir -p dist/ndlocr-gpu
           cp gpu-preview-src/ndlocr-lite-v2/{index.html,app.mjs,ocr-logic.mjs,table-logic.mjs} dist/ndlocr-gpu/
           printf '%s\n' 'cd7abd26ad4b901d1675fd4972ae68ecb890caf3' > dist/ndlocr-gpu/source-commit.txt
@@ -195,15 +245,15 @@ jobs:
           test -s dist/translate/compat/wllama.js
           test -s dist/translate/compat/wllama.wasm
       - uses: actions/configure-pages@v5
-        if: steps.verified.outputs.available == 'true' || steps.previous_site.outputs.available == 'true'
+        if: steps.ocr_site.outputs.available == 'true' || steps.verified.outputs.available == 'true' || steps.previous_site.outputs.available == 'true'
       - uses: actions/upload-pages-artifact@v4
-        if: steps.verified.outputs.available == 'true' || steps.previous_site.outputs.available == 'true'
+        if: steps.ocr_site.outputs.available == 'true' || steps.verified.outputs.available == 'true' || steps.previous_site.outputs.available == 'true'
         with:
           name: github-pages-${{ github.run_attempt }}
           path: dist
           retention-days: 30
       - name: Wait for Pages artifact metadata visibility
-        if: steps.verified.outputs.available == 'true' || steps.previous_site.outputs.available == 'true'
+        if: steps.ocr_site.outputs.available == 'true' || steps.verified.outputs.available == 'true' || steps.previous_site.outputs.available == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           ARTIFACT_NAME: github-pages-${{ github.run_attempt }}
@@ -220,7 +270,7 @@ jobs:
       # The REST list can see the artifact before the deploy action's list.
       # Retry the same upload, never upload a second artifact in this job.
       - name: Deploy to GitHub Pages
-        if: steps.verified.outputs.available == 'true' || steps.previous_site.outputs.available == 'true'
+        if: steps.ocr_site.outputs.available == 'true' || steps.verified.outputs.available == 'true' || steps.previous_site.outputs.available == 'true'
         id: deployment
         uses: actions/deploy-pages@v4
         continue-on-error: true
