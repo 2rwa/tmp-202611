@@ -1,8 +1,8 @@
-name: Echo Flex public OTA inventory
+name: Echo Flex public OTA targeted inspection
 on:
   push:
     branches: [echo-flex-ota-analysis]
-    paths: ['.github/workflows/echo-flex-ota-analysis.yml']
+    paths: ['.github/workflows/echo-flex-ota-analysis.yml', 'echo-flex/inspect.py']
   workflow_dispatch:
 permissions:
   contents: read
@@ -21,6 +21,7 @@ jobs:
             url: 'https://d1s31zyz7dcc2d.cloudfront.net/2026/10/27/3b1c17c9-cbf4-4d0c-a552-fa8fc23e9117/update-kindle-croissant-NS6575_user_8349_0013323246980.bin'
             md5: '579826d10e6711fd259f7dd68e2a0cd9'
     steps:
+      - uses: actions/checkout@v4
       - name: Fetch and verify original OTA
         run: |
           curl -fL --retry 2 --max-time 180 '${{ matrix.url }}' -o ota.bin
@@ -41,24 +42,5 @@ jobs:
             mkdir fs
             debugfs -R "rdump / $PWD/fs" extracted/system.img
           fi
-      - name: Inventory USB accessory references
-        run: |
-          python3 - <<'PY'
-          import pathlib,re,subprocess
-          root=pathlib.Path('fs')
-          files=[p for p in root.rglob('*') if p.is_file() and not p.is_symlink()]
-          print('Extracted regular files:',len(files))
-          if not files: raise SystemExit('No files extracted')
-          print('USB/accessory-related filenames:')
-          for p in files:
-              if re.search(r'usb|accessor|serial|thirdreality|motion|nightlight|croissant|clock',str(p),re.I): print(p)
-          pattern=re.compile(rb'third.?reality|3rnl040u|tr-ums|usb.{0,24}accessor|accessor.{0,24}usb|ttyACM|cdc.acm|night.?light|smart.?clock|motion.?sensor',re.I)
-          for p in files:
-              try:
-                  result=subprocess.run(['strings','-a',str(p)],capture_output=True,check=False)
-                  matches=[x.decode('utf-8','replace')[:200] for x in result.stdout.splitlines() if pattern.search(x)]
-              except OSError: continue
-              if matches:
-                  print(str(p),len(matches),'matches')
-                  for x in list(dict.fromkeys(matches))[:10]: print(' ',x)
-          PY
+      - name: Inspect accessory transport and companion metadata
+        run: python3 echo-flex/inspect.py fs
