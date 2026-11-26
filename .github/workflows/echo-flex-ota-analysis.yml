@@ -2,7 +2,7 @@ name: Echo Flex protobuf descriptor inspection
 on:
   push:
     branches: [echo-flex-ota-analysis]
-    paths: ['.github/workflows/echo-flex-ota-analysis.yml', 'echo-flex/inspect.py', 'echo-flex/descriptors.py']
+    paths: ['.github/workflows/echo-flex-ota-analysis.yml', 'echo-flex/inventory.py', 'echo-flex/descriptors.py']
   workflow_dispatch:
 permissions:
   contents: read
@@ -43,9 +43,9 @@ jobs:
             debugfs -R "rdump / $PWD/fs" extracted/system.img
           fi
       - name: Inspect accessory transport and companion metadata
-        run: python3 echo-flex/inspect.py fs
+        run: python3 echo-flex/inventory.py fs
       - name: Recover protobuf descriptor metadata and USB endpoints
         run: |
           python3 -m venv .venv
           .venv/bin/pip -q install protobuf pyelftools
-          .venv/bin/python echo-flex/descriptors.py fs
+          .venv/bin/python -P echo-flex/descriptors.py fs

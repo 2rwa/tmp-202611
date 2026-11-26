@@ -4,13 +4,13 @@ Read-only analysis of original public Amazon OTA packages. No Amazon or Third Re
 
 ## Reproduction
 
-The workflow [.github/workflows/echo-flex-ota-analysis.yml](../.github/workflows/echo-flex-ota-analysis.yml) downloads the 3471 (2021) and 8349 (2026) OTAs, verifies the published MD5, extracts the system partition using payload-dumper-go, then extracts the SquashFS filesystem. The scripts inspect.py and descriptors.py report metadata without executing the firmware.
+The workflow [.github/workflows/echo-flex-ota-analysis.yml](../.github/workflows/echo-flex-ota-analysis.yml) downloads the 3471 (2021) and 8349 (2026) OTAs, verifies the published MD5, extracts the system partition using payload-dumper-go, then extracts the SquashFS filesystem. The scripts inventory.py and descriptors.py report metadata without executing the firmware.
 
 ## Verified findings
 
 - [Initial extraction, both versions](https://github.com/2rwa/tmp-202611/actions/runs/45737935535)
 - [Targeted inspection, both versions](https://github.com/2rwa/tmp-202611/actions/runs/45738363409)
-- [Protobuf descriptor inspection](https://github.com/2rwa/tmp-202611/actions/runs/45738516008) (separate follow-up run)
+- [Protobuf descriptor inspection](https://github.com/2rwa/tmp-202611/actions/runs/45738516008) (failed: local inspect.py shadowed Python standard-library inspect; renamed to inventory.py and added safe-path mode)
 
 The extracted companion firmware images are identical across both versions.
 
