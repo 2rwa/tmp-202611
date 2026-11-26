@@ -1,5 +1,5 @@
 import {exportDaisy} from './daisy.mjs';
-import {openPDF,renderInput,exportDocument,searchablePDF} from './document-io.mjs';
+import {openPDF,openTIFF,renderInput,exportDocument,searchablePDF} from './document-io.mjs';
 import {decodeTable,assignTableLines,tableHTML,escapeHTML,ruledAxes,interiorCell,shortCellCandidates} from './table-logic.mjs';
 import {recognizeCascade,readingOrder,inclusionFromCSV,cropRect,cropPoint,suppressLines,inkBounds,tcySegments,codepoints,splitWideLine} from './ocr-logic.mjs';
 // Experimental JS port of preprocessing and decoding in NDL's NDLOCR-Lite 2.0.0 (CC BY 4.0).
@@ -75,6 +75,7 @@ $('file').onchange=async e=>{
  try{
   for(const f of files){
    if(f.type==='application/pdf'||/\.pdf$/i.test(f.name)){const d=await openPDF(f);opened.push(d);for(let i=1;i<=d.numPages;i++)next.push({kind:'pdf',doc:d,number:i,name:f.name+'#'+i});}
+   else if(f.type==='image/tiff'||/\.tiff?$/i.test(f.name)){const tiff=await openTIFF(f);for(let i=1;i<=tiff.pages.length;i++)next.push({kind:'tiff',tiff,number:i,name:f.name+'#'+i});}
    else next.push({kind:'image',file:f,name:f.name});
   }
   if(next.length>200)throw Error('一度に200ページまで処理できます');

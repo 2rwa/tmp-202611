@@ -9,9 +9,56 @@ export async function openPDF(file){
  const pdfjs=await pdfjsPromise;pdfjs.GlobalWorkerOptions.workerSrc=pdfjsBase+'build/pdf.worker.mjs';
  return pdfjs.getDocument({data:new Uint8Array(await file.arrayBuffer()),cMapUrl:pdfjsBase+'cmaps/',cMapPacked:true,standardFontDataUrl:pdfjsBase+'standard_fonts/',isEvalSupported:false}).promise;
 }
+let tiffPromise;
+function loadGlobal(url,key){
+ if(globalThis[key])return Promise.resolve(globalThis[key]);
+ return new Promise((resolve,reject)=>{const s=document.createElement('script');s.src=url;s.onload=()=>globalThis[key]?resolve(globalThis[key]):reject(Error(key+' unavailable'));s.onerror=()=>{s.remove();reject(Error(key+' download failed'));};document.head.append(s);});
+}
+async function tiffDecoder(){
+ if(!tiffPromise)tiffPromise=(async()=>{
+  await loadGlobal('https://cdn.jsdelivr.net/npm/pako@1.0.11/dist/pako.min.js','pako');
+  return loadGlobal('https://cdn.jsdelivr.net/npm/utif@3.1.0/UTIF.js','UTIF');
+ })().catch(e=>{tiffPromise=null;throw e;});
+ return tiffPromise;
+}
+export async function openTIFF(file){
+ if(file.size>256*1024*1024)throw Error('TIFFは256MB以下にしてください');
+ const buffer=await file.arrayBuffer(),v=new DataView(buffer);
+ if(v.byteLength<8)throw Error('TIFF header truncated');
+ const marker=v.getUint16(0),le=marker===0x4949;
+ if((!le&&marker!==0x4d4d)||v.getUint16(2,le)!==42)throw Error('通常TIFFのみ対応（BigTIFFは未対応）');
+ // Check the main IFD chain before invoking the decoder.
+ let off=v.getUint32(4,le),seen=new Set();
+ while(off){
+  if(seen.has(off)||off+2>v.byteLength||seen.size>=200)throw Error('Invalid or oversized TIFF page directory');
+  seen.add(off);const end=off+2+v.getUint16(off,le)*12;
+  if(end+4>v.byteLength)throw Error('Truncated TIFF page directory');
+  off=v.getUint32(end,le);
+ }
+ const utif=await tiffDecoder(),ifds=utif.decode(buffer);
+ const pages=ifds.filter(x=>x.t256?.[0]&&x.t257?.[0]&&(x.t273||x.t324)&&!((x.t254?.[0]||0)&1));
+ if(!pages.length||pages.length>200)throw Error('TIFFの画像ページがありません、または200ページを超えています');
+ for(const p of pages){const w=p.t256[0],h=p.t257[0];if(!Number.isSafeInteger(w)||!Number.isSafeInteger(h)||w<1||h<1||w*h>40000000)throw Error('TIFFは1ページ4000万画素以下にしてください');}
+ return {buffer,pages,utif};
+}
+function renderTIFF(entry,target){
+ const {buffer,pages,utif}=entry.tiff,p=pages[entry.number-1],w=p.t256[0],h=p.t257[0],orientation=p.t274?.[0]||1;
+ try{
+  utif.decodeImage(buffer,p, pages);
+  if(!p.data)throw Error('TIFF pixel decode failed');
+  const rgba=utif.toRGBA8(p);
+  if(rgba.length!==w*h*4)throw Error('TIFF RGBA length mismatch');
+  const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(rgba),w,h),0,0);
+  target.width=orientation>=5&&orientation<=8?h:w;target.height=orientation>=5&&orientation<=8?w:h;
+  const g=target.getContext('2d');g.fillStyle='white';g.fillRect(0,0,target.width,target.height);
+  const transforms={2:[-1,0,0,1,w,0],3:[-1,0,0,-1,w,h],4:[1,0,0,-1,0,h],5:[0,1,1,0,0,0],6:[0,1,-1,0,h,0],7:[0,-1,-1,0,h,w],8:[0,-1,1,0,0,w]};
+  g.save();if(transforms[orientation])g.transform(...transforms[orientation]);g.drawImage(c,0,0);g.restore();c.width=1;c.height=1;
+ }finally{delete p.data;}
+}
 export async function renderInput(entry,target){
  const g=target.getContext('2d');
- if(entry.kind==='pdf'){
+ if(entry.kind==='tiff'){renderTIFF(entry,target);
+ }else if(entry.kind==='pdf'){
   const p=await entry.doc.getPage(entry.number),base=p.getViewport({scale:1}),scale=Math.min(2.5,Math.sqrt(40000000/(base.width*base.height))),v=p.getViewport({scale});
   target.width=Math.ceil(v.width);target.height=Math.ceil(v.height);
   try{await p.render({canvasContext:g,viewport:v,background:'white'}).promise;}finally{p.cleanup();}

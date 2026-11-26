@@ -1,5 +1,5 @@
 const {chromium}=require('playwright');
-const {spawn}=require('node:child_process');
+const {spawn,execFileSync}=require('node:child_process');
 const fs=require('node:fs/promises');
 const path=require('node:path');
 const assert=require('node:assert/strict');
@@ -198,6 +198,17 @@ async function main(){
    await page.locator('#enable-tcy').check();
    try{const on=await runOCR(),j=await json('tcy-result');assert.equal(j.tcy,true);assert.ok(cer(on.actual,'令和12年度')<=.20,JSON.stringify({off:off.actual,on:on.actual}));return {...on,off:off.actual};}finally{await page.locator('#enable-tcy').uncheck();}
   },{requires:['#enable-tcy'],candidate:true});
+  await feature('23-multipage-tiff',async()=>{
+   const a=await image('tiff-a',{w:700,h:110,lines:[{text:'FIRST TIFF PAGE',x:20,y:20}]}),b=await image('tiff-b',{w:700,h:110,lines:[{text:'SECOND TIFF PAGE',x:20,y:20}]});
+   const f=path.join(OUT,'multi.tiff');
+   execFileSync('/usr/bin/python3',['-c','from PIL import Image; import sys; a,b=[Image.open(x).convert("RGB") for x in sys.argv[1:3]]; a.save(sys.argv[3],save_all=True,append_images=[b],compression="tiff_adobe_deflate")',a,b,f]);
+   await load(f,'line');assert.equal(await page.locator('#page-info').innerText(),'1 / 2');await runOCR();assert.match(await page.locator('#result').inputValue(),/FIRST TIFF PAGE/);
+   await page.locator('#page-next').click();await page.waitForFunction(()=>document.querySelector('#page-info').textContent==='2 / 2'&&!document.querySelector('#run').disabled);
+   assert.match(await page.locator('#result').inputValue(),/SECOND TIFF PAGE/);
+   const j=await json('tiff-page-two');assert.equal(j.width,700);assert.equal(j.height,110);assert.equal(j.page,2);
+   const txt=await fs.readFile(await exportFile('txt','tiff.txt'),'utf8');assert.match(txt,/FIRST TIFF PAGE/);assert.match(txt,/SECOND TIFF PAGE/);
+   return {pages:2,compression:'deflate'};
+  },{requires:['#page-next','#page-prev']});
   await feature('16-cache-no-model-download',async()=>{
    await page.reload();await page.locator('#run').waitFor();await page.route('**/*.onnx',route=>route.abort());try{await page.locator('#sample').click();await page.locator('#mode').selectOption('page');const out=await runOCR();assert.equal(out.actual,sample);assert.equal(network.filter(r=>/\.onnx$/.test(r.url)).length,0);return out;}finally{await page.unroute('**/*.onnx');}
   });

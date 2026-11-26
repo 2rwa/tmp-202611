@@ -13,8 +13,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        ort: ['1.22.0', 'latest']
-        opt: ['all', 'disabled']
+        ort: ['1.31.1']
+        opt: ['all']
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

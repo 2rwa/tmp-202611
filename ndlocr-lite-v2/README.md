@@ -34,3 +34,5 @@ See [TESTS.md](TESTS.md) for the feature contract, fixtures and test command. OC
 - Text DAISY 3 ZIP: DTBook / SMIL / NCX / OPF / CSS, page navigation and phrase references. Text only, no audio; simplified page-per-section, no official paragraph/figure processing or reader compatibility certification. Table refinement reruns short single-line cells with horizontal orientation. Extreme horizontal lines split at low-ink columns before recognition.
 
 - 認識結果の訂正: ページ単位の行エディタと表セルエディタ。本文訂正は TXT/XML/TEI/検索可能PDF/DAISY 等の本文に反映し、セル訂正は HTML/Markdown の表と JSON に反映。座標と訂正前文字列を保持。ページ移動時に訂正内容を保持し、再OCR時には再生成する。
+
+- TIFF入力（UTIF 3.1.0 + pako 1.0.11、必要時のみロード）。複数IFDのページ分割、Orientation 1–8、PDF/画像と同様の出力。通常TIFFのみ、BigTIFF・JPEG 2000は未対応。256MB、200ページ、1ページ4000万画素制限。
