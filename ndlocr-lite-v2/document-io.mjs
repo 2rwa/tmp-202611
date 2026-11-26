@@ -55,9 +55,58 @@ function renderTIFF(entry,target){
   g.save();if(transforms[orientation])g.transform(...transforms[orientation]);g.drawImage(c,0,0);g.restore();c.width=1;c.height=1;
  }finally{delete p.data;}
 }
+let jpxPromise;
+export function jpxHeader(bytes){
+ const v=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),end=v.byteLength;
+ if(end<42)throw Error('JPEG 2000 header truncated');
+ let start=0,stop=end;
+ if(v.getUint16(0)!==0xff4f){
+  if(v.getUint32(0)!==12||v.getUint32(4)!==0x6a502020||v.getUint32(8)!==0x0d0a870a)throw Error('Invalid JP2 signature');
+  let pos=0,found=false;
+  while(pos+8<=end){
+   let len=v.getUint32(pos),head=8;const type=v.getUint32(pos+4);
+   if(len===1){if(pos+16>end)throw Error('JP2 XLBox truncated');len=v.getUint32(pos+8)*4294967296+v.getUint32(pos+12);head=16;}
+   if(len===0)len=end-pos;
+   if(!Number.isSafeInteger(len)||len<head||pos+len>end)throw Error('Invalid JP2 box length');
+   if(type===0x6a703263){if(found)throw Error('Multiple JP2 codestreams unsupported');start=pos+head;stop=pos+len;found=true;}
+   pos+=len;
+  }
+  if(!found)throw Error('JP2 codestream missing');
+ }
+ if(start+42>stop||v.getUint16(start)!==0xff4f||v.getUint16(start+2)!==0xff51)throw Error('JPEG 2000 SIZ missing');
+ const p=start+4,len=v.getUint16(p),w=v.getUint32(p+4),h=v.getUint32(p+8),x=v.getUint32(p+12),y=v.getUint32(p+16),tw=v.getUint32(p+20),th=v.getUint32(p+24),tx=v.getUint32(p+28),ty=v.getUint32(p+32),n=v.getUint16(p+36);
+ if(len!==38+3*n||p+len>stop)throw Error('Invalid JPEG 2000 SIZ length');
+ if(x||y||tx||ty||!w||!h||!tw||!th||w*h>40000000||Math.ceil(w/tw)*Math.ceil(h/th)>4096)throw Error('JPEG 2000 dimensions or origin unsupported');
+ if(n!==1&&n!==3)throw Error('JPEG 2000: grayscale/RGB only');
+ for(let i=0;i<n;i++){const c=p+38+3*i;if(v.getUint8(c)!==7||v.getUint8(c+1)!==1||v.getUint8(c+2)!==1)throw Error('JPEG 2000: unsigned 8-bit full-resolution components only');}
+ return {start,stop,width:w,height:h,components:n};
+}
+async function renderJPX(file,target){
+ if(file.size>256*1024*1024)throw Error('JPEG 2000は256MB以下にしてください');
+ const bytes=new Uint8Array(await file.arrayBuffer()),header=jpxHeader(bytes);
+ if(!jpxPromise)jpxPromise=import('https://cdn.jsdelivr.net/npm/jpeg2000@1.1.1/+esm').catch(e=>{jpxPromise=null;throw e;});
+ const mod=await jpxPromise,JpxImage=mod.JpxImage||mod.default?.JpxImage;
+ if(typeof JpxImage!=='function')throw Error('JPEG 2000 decoder missing');
+ const jpx=new JpxImage();jpx.failOnCorruptedImage=true;jpx.parse(bytes.subarray(header.start,header.stop));
+ const {width:w,height:h,components:n}=header;
+ if(jpx.width!==w||jpx.height!==h||jpx.componentsCount!==n||!jpx.tiles?.length)throw Error('JPEG 2000 decoded dimensions mismatch');
+ target.width=w;target.height=h;const g=target.getContext('2d');g.fillStyle='white';g.fillRect(0,0,w,h);
+ let total=0;const occupied=[];
+ for(const t of jpx.tiles){
+  const {left,top,width,height,items}=t;
+  if(![left,top,width,height].every(Number.isInteger)||left<0||top<0||width<1||height<1||left+width>w||top+height>h||items.length!==width*height*n)throw Error('Invalid JPEG 2000 tile');
+  if(occupied.some(r=>left<r.left+r.width&&left+width>r.left&&top<r.top+r.height&&top+height>r.top))throw Error('Overlapping JPEG 2000 tiles');
+  occupied.push({left,top,width,height});total+=width*height;
+  const rgba=new Uint8ClampedArray(width*height*4);
+  for(let i=0,j=0,k=0;i<width*height;i++,j+=n,k+=4){rgba[k]=items[j];rgba[k+1]=items[j+(n===3?1:0)];rgba[k+2]=items[j+(n===3?2:0)];rgba[k+3]=255;}
+  g.putImageData(new ImageData(rgba,width,height),left,top);
+ }
+ if(total!==w*h)throw Error('Incomplete JPEG 2000 tile coverage');
+}
 export async function renderInput(entry,target){
  const g=target.getContext('2d');
- if(entry.kind==='tiff'){renderTIFF(entry,target);
+ if(entry.kind==='jpx'){await renderJPX(entry.file,target);
+ }else if(entry.kind==='tiff'){renderTIFF(entry,target);
  }else if(entry.kind==='pdf'){
   const p=await entry.doc.getPage(entry.number),base=p.getViewport({scale:1}),scale=Math.min(2.5,Math.sqrt(40000000/(base.width*base.height))),v=p.getViewport({scale});
   target.width=Math.ceil(v.width);target.height=Math.ceil(v.height);

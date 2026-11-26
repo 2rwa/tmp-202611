@@ -36,3 +36,5 @@ See [TESTS.md](TESTS.md) for the feature contract, fixtures and test command. OC
 - 認識結果の訂正: ページ単位の行エディタと表セルエディタ。本文訂正は TXT/XML/TEI/検索可能PDF/DAISY 等の本文に反映し、セル訂正は HTML/Markdown の表と JSON に反映。座標と訂正前文字列を保持。ページ移動時に訂正内容を保持し、再OCR時には再生成する。
 
 - TIFF入力（UTIF 3.1.0 + pako 1.0.11、必要時のみロード）。複数IFDのページ分割、Orientation 1–8、PDF/画像と同様の出力。通常TIFFのみ、BigTIFF・JPEG 2000は未対応。256MB、200ページ、1ページ4000万画素制限。
+
+- JPEG 2000入力（jpeg2000 1.1.1、必要時のみロード）。JP2コンテナと生J2K/J2C/JPC、8-bit符号なしグレースケール/RGB、複数タイル。ICC色補正、パレット、サブサンプリング、高ビット深度、JPX複数画像は未対応。入力は256MB・4000万画素・4096タイル以内。

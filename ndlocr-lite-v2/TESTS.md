@@ -40,3 +40,5 @@ Run 45721411608: PASS 18, FAIL 2, zero pending/precision failures. Crop, 126-cha
 Run 45724509527: 19 PASS, 1 FAIL (single-glyph 二/三), Pages successful. Keep exact table accuracy assertion. Expanded short-glyph model/geometry candidates (experimental). Tests 21 and 22 cover text/cell editing, original text, coordinates, navigation, exports and restore. Table edits are distinct from body lines.
 
 Run 45754805153: all 22 PASS; table exact, both correction regressions PASS. GPU 1.31.1 all/disabled PASS, obsolete 1.22.0 known failures removed from automatic matrix; pinned 1.31.1/all remains. Case 23 verifies real compressed multipage TIFF, navigation, JSON dimensions and text export. TIFF decoder support beyond tested fixtures remains experimental.
+
+Case 24: real RGB JP2 with three tiles and grayscale raw J2K generated using Pillow/OpenJPEG, batch OCR and page navigation, image size validation. Existing 22 tests passed; TIFF case 23 under verification at implementation time. JPEG 2000 support is provisional until browser decode/OCR passes.

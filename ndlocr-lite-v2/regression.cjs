@@ -209,6 +209,18 @@ async function main(){
    const txt=await fs.readFile(await exportFile('txt','tiff.txt'),'utf8');assert.match(txt,/FIRST TIFF PAGE/);assert.match(txt,/SECOND TIFF PAGE/);
    return {pages:2,compression:'deflate'};
   },{requires:['#page-next','#page-prev']});
+  await feature('24-jpeg2000',async()=>{
+   const a=await image('jp2-a',{w:768,h:128,lines:[{text:'JPEG 2000 RGB',x:20,y:20}]}),b=await image('jp2-b',{w:768,h:128,lines:[{text:'JPEG 2000 GRAY',x:20,y:20}]});
+   const f=path.join(OUT,'rgb.jp2'),g=path.join(OUT,'gray.j2k');
+   execFileSync('/usr/bin/python3',['-c','from PIL import Image,features; import sys; assert features.check("jpg_2000"); Image.open(sys.argv[1]).convert("RGB").save(sys.argv[3],tile_size=(256,128),irreversible=False); Image.open(sys.argv[2]).convert("L").save(sys.argv[4],format="JPEG2000",no_jp2=True,irreversible=False)',a,b,f,g]);
+   await page.locator('#file').setInputFiles([f,g]);await page.waitForFunction(()=>['ready','error'].includes(document.querySelector('#status').dataset.state)&&!document.querySelector('#run').disabled);
+   assert.equal(await page.locator('#status').getAttribute('data-state'),'ready',await page.locator('#status').innerText());
+   await page.locator('#mode').selectOption('line');await runOCR();assert.match(await page.locator('#result').inputValue(),/JPEG 2000 RGB/);
+   await page.locator('#page-next').click();await page.waitForFunction(()=>document.querySelector('#page-info').textContent==='2 / 2'&&!document.querySelector('#run').disabled);
+   assert.match(await page.locator('#result').inputValue(),/JPEG 2000 GRAY/);
+   const j=await json('jp2-gray');assert.equal(j.width,768);assert.equal(j.height,128);
+   return {rgbTiles:3,grayCodestream:true};
+  },{requires:['#page-next','#page-prev']});
   await feature('16-cache-no-model-download',async()=>{
    await page.reload();await page.locator('#run').waitFor();await page.route('**/*.onnx',route=>route.abort());try{await page.locator('#sample').click();await page.locator('#mode').selectOption('page');const out=await runOCR();assert.equal(out.actual,sample);assert.equal(network.filter(r=>/\.onnx$/.test(r.url)).length,0);return out;}finally{await page.unroute('**/*.onnx');}
   });

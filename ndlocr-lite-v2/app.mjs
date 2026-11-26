@@ -76,6 +76,7 @@ $('file').onchange=async e=>{
   for(const f of files){
    if(f.type==='application/pdf'||/\.pdf$/i.test(f.name)){const d=await openPDF(f);opened.push(d);for(let i=1;i<=d.numPages;i++)next.push({kind:'pdf',doc:d,number:i,name:f.name+'#'+i});}
    else if(f.type==='image/tiff'||/\.tiff?$/i.test(f.name)){const tiff=await openTIFF(f);for(let i=1;i<=tiff.pages.length;i++)next.push({kind:'tiff',tiff,number:i,name:f.name+'#'+i});}
+   else if(/\.(jp2|j2k|j2c|jpc)$/i.test(f.name)||['image/jp2','image/j2k','image/jpc'].includes(f.type))next.push({kind:'jpx',file:f,name:f.name});
    else next.push({kind:'image',file:f,name:f.name});
   }
   if(next.length>200)throw Error('一度に200ページまで処理できます');
