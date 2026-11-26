@@ -30,12 +30,17 @@ jobs:
           unzip -j ota.bin payload.bin
       - name: Extract system image
         run: |
-          go install github.com/ssut/payload-dumper-go@latest
+          go install github.com/ssut/payload-dumper-go@c3a50ba8d784
           "$(go env GOPATH)/bin/payload-dumper-go" -p system -o extracted payload.bin
           file extracted/system.img
           sha256sum extracted/system.img
-          mkdir fs
-          debugfs -R "rdump / $PWD/fs" extracted/system.img
+          if file extracted/system.img | grep -qi squashfs; then
+            sudo apt-get install -y squashfs-tools
+            unsquashfs -no-xattrs -d fs extracted/system.img
+          else
+            mkdir fs
+            debugfs -R "rdump / $PWD/fs" extracted/system.img
+          fi
       - name: Inventory USB accessory references
         run: |
           python3 - <<'PY'
