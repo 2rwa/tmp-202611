@@ -1,4 +1,4 @@
-name: Echo Flex protobuf descriptor inspection
+name: Echo Flex offline protobuf validation
 on:
   push:
     branches: [echo-flex-ota-analysis]

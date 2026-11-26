@@ -80,7 +80,7 @@ for s in symbols.iter_symbols():
 print("Recovered",len(found),"descriptors")
 for name,(obj,method) in sorted(found.items()):
     print(f"\n### PROTO {name} package={obj.package} {method}")
-    if name in {"Envelope.proto","Header.proto","Endpoint.proto","AlexaDiscovery.proto","AlexaMotionSensor.proto","AlexaTemperatureSensor.proto","Property.proto"}:
+    if True:
         for e in obj.enum_type:print(" enum",e.name,[(v.name,v.number) for v in e.value])
         for m in obj.message_type:brief_message(m)
     else:print(" messages:",[m.name for m in obj.message_type])
@@ -111,3 +111,69 @@ for f in sorted(manifest.parent.glob("*.bin")):
             if d[1]==4:print("  interface",d[2],"class/sub/proto",d[5:8].hex())
             elif d[1]==5:print("  endpoint",hex(d[2]),"attributes",hex(d[3]),"max packet",int.from_bytes(d[4:6],"little"),"interval",d[6])
             elif d[1]==0x24:print("  CDC functional",d.hex())
+
+# Keep recovered descriptors in the runner only; validate against protobuf's
+# dependency/type checker, rather than trusting a successful byte scan alone.
+from google.protobuf import descriptor_pool, message_factory, timestamp_pb2
+import math
+pool=descriptor_pool.DescriptorPool()
+pool.AddSerializedFile(timestamp_pb2.DESCRIPTOR.serialized_pb)
+pending={n:o for n,(o,_) in found.items()}
+print("\n### SCHEMA VALIDATION")
+while pending:
+    progress=False
+    for n,o in list(pending.items()):
+        try:
+            pool.Add(o)
+        except Exception as e:
+            continue
+        del pending[n]
+        progress=True
+    if not progress:
+        for n,o in pending.items():
+            try:pool.Add(o)
+            except Exception as e:print("unresolved dependency/type",n,str(e))
+        raise SystemExit("descriptor pool validation failed")
+print("Validated all",len(found),"descriptors")
+def new(name):
+    return message_factory.GetMessageClass(pool.FindMessageTypeByName(name))()
+def set_scalar(m, value):
+    fields=m.DESCRIPTOR.fields
+    if len(fields)!=1 or fields[0].is_repeated or fields[0].message_type:
+        raise AssertionError("unexpected shape "+m.DESCRIPTOR.full_name)
+    setattr(m,fields[0].name,value)
+def roundtrip(m):
+    buf=m.SerializeToString(deterministic=True)
+    other=type(m).FromString(buf)
+    assert m==other
+    return other
+prefix="v3.CapabilityInterfaces."
+print("\n### OFFLINE SYNTHETIC LIGHTING CODEC TESTS")
+for name in ("TurnOn","TurnOff","SetBrightness","AdjustBrightness","SetColor","SetColorTemperature","ReportState","Response","ChangeReport","StateReport"):
+    m=new(prefix+name)
+    # Check the actual schema, and perform a synthetic round trip with
+    # representative nonempty data for scalar fields. No connection or credentials.
+    for f in m.DESCRIPTOR.fields:
+        if f.is_repeated or f.message_type:continue
+        if f.enum_type:setattr(m,f.name,f.enum_type.values[-1].number)
+        elif f.type in (f.TYPE_INT32,f.TYPE_INT64,f.TYPE_UINT32,f.TYPE_UINT64,f.TYPE_SINT32,f.TYPE_SINT64,f.TYPE_FIXED32,f.TYPE_FIXED64,f.TYPE_SFIXED32,f.TYPE_SFIXED64):setattr(m,f.name,37)
+        elif f.type in (f.TYPE_DOUBLE,f.TYPE_FLOAT):setattr(m,f.name,37.0)
+        elif f.type==f.TYPE_BOOL:setattr(m,f.name,True)
+        elif f.type==f.TYPE_STRING:setattr(m,f.name,"offline-test")
+        elif f.type==f.TYPE_BYTES:setattr(m,f.name,b"offline-test")
+    if name=="SetColor":
+        for f in m.DESCRIPTOR.fields:
+            if f.message_type and not f.is_repeated:
+                color=getattr(m,f.name)
+                for cf in color.DESCRIPTOR.fields:
+                    if cf.type in (cf.TYPE_FLOAT,cf.TYPE_DOUBLE):setattr(color,cf.name,0.5)
+    env=new("v3.Envelope")
+    env.header.namespace="offline.test"
+    env.header.name=name
+    env.header.messageId="synthetic-"+name
+    env.endpoint.id="offline-test-device"
+    env.payload=m.SerializeToString()
+    decoded=roundtrip(env)
+    assert type(m).FromString(decoded.payload)==m
+    print("PASS",name,"fields",[(f.name,f.number,f.type) for f in m.DESCRIPTOR.fields],"payload bytes",len(env.payload))
+print("PASS all 10 local synthetic codec cases; transport/registration not tested")

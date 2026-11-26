@@ -29,6 +29,10 @@ The host protobuf library contains 17 named .proto descriptors in 2021 and 18 in
 
 Amazon's [AMA sample client](https://github.com/alexa-samples/ama-sample-client) uses a 16-bit transport header with version/stream/reserved/length-width flags and variable 8/16-bit payload lengths. Its stream zero contains a protobuf ControlEnvelope. This is a Bluetooth example, not proof that Echo Flex uses exactly the same USB framing.
 
+## Descriptor recovery (verified)
+
+[Both OTA jobs passed](https://github.com/2rwa/tmp-202611/actions/runs/45738654259): 17 and 18 recovered descriptors, respectively. Discovery includes a USB connection enum and LIGHT, SWITCH, SMARTPLUG, TEMPERATURE_SENSOR categories. This does not establish actual acceptance over USB. Both companion images contain CDC configuration descriptors with interrupt IN and bulk IN/OUT endpoints, and alternate data-interface protocol values 00 and AA. The meaning of AA remains unverified.
+
 ## Open questions
 
 - Validate configuration descriptors and endpoint addresses.
