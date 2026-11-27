@@ -14,7 +14,7 @@ Exact EZ-USB silicon variant not verified. Bootloader bcdDevice 0.00. Embedded d
 
 PB0 SHIFT, PB1 BACK, PB3 JOG press, all active low. PB2/PB4 quadrature; idle 11; observed right 11→10→00→01→11, left reverse. Debounce required.
 
-PC2 serial data MSB first, PC3 clock (rising transitions after data setup). PC0 initialization transition; reset function not physically confirmed. PC1 framing/control; **polarity/function unresolved**, not proven chip-select. PC4 independent active-low request convention (request 0 gives pin high, nonzero low). All Port C outputs enabled according to 8051-side MOVX read; direct USB A0 reads of some GPIO registers are unreliable. Port C pin state and output enable confirmed in CPU snapshots (1b/1b/ff or 0b/0b/ff), not a scope measurement.
+PC2 serial data MSB first, PC3 clock (rising transitions after data setup). PC0 initialization transition; reset function not physically confirmed. PC1 framing/control, LOW during both native transfer routines; consistent with active-low chip-select, physical function unverified. PC4 independent active-low request convention (request 0 gives pin high, nonzero low). All Port C outputs enabled according to 8051-side MOVX read; direct USB A0 reads of some GPIO registers are unreliable. Port C pin state and output enable confirmed in CPU snapshots (1b/1b/ff or 0b/0b/ff), not a scope measurement.
 
 ## Embedded firmware
 
@@ -37,11 +37,11 @@ Firmware fill loop writes 0x297 = 663 bytes. 13 bytes × 51 rows is consistent w
 
 ### LCD native routines: corrected interpretation
 
-- 0x0eD3: arg=0 sets PC1 HIGH; arg!=0 clears PC1 LOW.
+- 0x0eD3: arg=0 clears PC1 LOW; arg!=0 sets PC1 HIGH. The JZ at 0x0ed4 has next PC 0x0ed6 and target 0x0ede, the AND FD branch. This corrects an earlier reversed branch interpretation.
 - 0x0c43: eight-bit shift, MSB first, clock PC3; does not alter PC1.
 - 0x0a5c: derives OUTC from PINSC & 0x10 | 0x0a, then sets PC0 high immediately. Sends 0x27 and 0x18 in separate frames; sets level 0x20; clears and sets origin.
-- 0x0a09: sets origin with C0 00 00; sends B0 and 663 fill bytes; sets origin again. Calls 0x0ed3(0) before each frame and 0x0ed3(1) afterward. PC1 HIGH during transmission.
-- 0x0651: OUT4 handler snapshots PINSC into internal RAM 0x20, explicitly clears bit1, shifts B0, shifts OUT4BC bytes from OUT4BUF at 0x7cc0, then sets bit1 before returning. PC1 LOW during transmission. **This is the opposite framing polarity from 0x0a09.** Do not explain it away by naming PC1 /CS. The physical function is unknown.
+- 0x0a09: sets origin with C0 00 00; sends B0 and 663 fill bytes; sets origin again. Calls 0x0ed3(0) before each frame and 0x0ed3(1) afterward. PC1 LOW during transmission.
+- 0x0651: OUT4 handler snapshots PINSC into internal RAM 0x20, explicitly clears bit1, shifts B0, shifts OUT4BC bytes from OUT4BUF at 0x7cc0, then sets bit1 before returning. PC1 LOW during transmission. This matches 0x0a09: LOW during transmission, HIGH afterward. The physical function is not yet verified.
 - 0x0df7: clamp level to 63, send LCD 28 followed by level. 0x0e3d: LCD 0f/08. 0x0e59: LCD 10/11 (used in power paths; wake/sleep interpretation tentative). 0x0ec0: PC4 request polarity confirmed by CPU readback.
 - 0x0adf: initializes state and GPIO, queues a record starting with 0x10, sets PC4 high, initializes LCD.
 - 0x0f02/0x0f0e: call 0x0e59 with 1/0; 0x0f02 also queues a record 0x11. Main loop 0x0625 handles suspend flag then waits on USBCS bit7 and calls resume routine.
@@ -57,7 +57,7 @@ Firmware fill loop writes 0x297 = 663 bytes. 13 bytes × 51 rows is consistent w
 
 ## Open questions
 
-1. Why PC1 differs between fill and OUT4 path? Is it a mode line, framing signal, or firmware bug? Need compare physical waveform/logic and controller documentation.
+1. Confirm PC1 physical function and compare timing between fill and OUT4 paths; both use the same LOW-during-transfer framing.
 2. Identify LCD IC from instruction set 27,18,28+level,0f/08,10/11,C0 x y,B0 data. No datasheet match confirmed.
 3. Compare exact original Windows cold-start configuration and post-download command order to Linux test. Earlier experiments changed host USB configuration after CPU start to resynchronize endpoints; this works for USB but may affect suspend/restore state.
 4. PC0 reset pulse width and power-up wait: original code has no explicit delay between output writes. Do not assume reset function until verified.
